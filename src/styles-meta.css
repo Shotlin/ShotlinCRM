@@ -1,0 +1,37 @@
+.meta-integration-body {
+  padding: 24px;
+}
+
+.meta-form {
+  display: grid;
+  gap: 14px;
+  max-width: 760px;
+}
+
+.meta-form .btn {
+  justify-self: start;
+}
+
+.meta-connected {
+  display: grid;
+  gap: 12px;
+  max-width: 700px;
+}
+
+.meta-connected > p:first-child {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: #2f6b49;
+}
+
+.webhook-url {
+  display: block;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fafafa;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}

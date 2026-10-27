@@ -1,0 +1,15 @@
+node_modules
+.next
+dist
+.vite
+.local
+.env
+.env.local
+.env.*.local
+*.local
+.DS_Store
+drizzle/meta
+test-results
+playwright-report
+screenshots
+*.tsbuildinfo

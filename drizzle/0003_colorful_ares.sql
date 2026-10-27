@@ -1,0 +1,1 @@
+ALTER TABLE "message_media" ALTER COLUMN "message_id" DROP NOT NULL;

@@ -1,0 +1,1 @@
+ALTER TABLE "workspaces" ADD COLUMN "reporting_currency" text DEFAULT 'INR' NOT NULL;

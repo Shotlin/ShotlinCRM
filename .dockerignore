@@ -1,0 +1,11 @@
+node_modules
+.next
+.local
+dist
+screenshots
+design
+.env
+.env.local
+.env.*.local
+*.tsbuildinfo
+.DS_Store
