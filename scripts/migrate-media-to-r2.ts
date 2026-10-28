@@ -14,7 +14,8 @@ try {
 const dryRun = process.argv.includes('--dry-run');
 const { db, pool } = await import('../src/server/db/client');
 const { messageMedia } = await import('../src/server/db/schema');
-const { headObjectInBucket, localMediaPath, putObjectToBucket } = await import('../src/server/storage');
+const { envBucketConfig, headObjectInBucket, localMediaPath, putObjectToBucket } = await import('../src/server/storage');
+const config = envBucketConfig();
 const { eq } = await import('drizzle-orm');
 
 const rows = await db.select().from(messageMedia).where(eq(messageMedia.state, 'ready'));
@@ -29,7 +30,7 @@ for (const row of rows) {
     const local = localMediaPath(row.objectKey);
     if (!existsSync(local)) {
       // Already moved earlier, or never on this disk. Check the bucket before calling it missing.
-      if (await headObjectInBucket(row.objectKey)) already += 1;
+      if (await headObjectInBucket(config, row.objectKey)) already += 1;
       else {
         missingLocal += 1;
         console.warn(`MISSING ${row.objectKey} is neither on disk nor in the bucket`);
@@ -37,7 +38,7 @@ for (const row of rows) {
       continue;
     }
     const size = (await stat(local)).size;
-    const existing = await headObjectInBucket(row.objectKey);
+    const existing = await headObjectInBucket(config, row.objectKey);
     if (existing && existing.sizeBytes === size) {
       already += 1;
       continue;
@@ -47,8 +48,8 @@ for (const row of rows) {
       bytes += size;
       continue;
     }
-    await putObjectToBucket(row.objectKey, await readFile(local), row.mimeType, { checksum: row.checksum });
-    const check = await headObjectInBucket(row.objectKey);
+    await putObjectToBucket(config, row.objectKey, await readFile(local), row.mimeType, { checksum: row.checksum });
+    const check = await headObjectInBucket(config, row.objectKey);
     if (check?.sizeBytes !== size) throw new Error('size in the bucket does not match after upload');
     copied += 1;
     bytes += size;

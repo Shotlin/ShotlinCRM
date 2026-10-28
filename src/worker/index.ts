@@ -12,7 +12,7 @@ const start = async () => {
     IORedis,
     { and, eq },
     { db },
-    { conversations, messages, outboundJobs, replyDrafts },
+    { conversations, messages, outboundJobs, replyDrafts, workspaces },
     { loadOutboundPayload },
     { whatsappManager },
     { publishChange },
@@ -23,6 +23,7 @@ const start = async () => {
     { sweepDriveSync },
     { driveConfigured },
     { getStorageHealth },
+    { sweepStorageMigrations },
   ] = await Promise.all([
     import('bullmq'),
     import('ioredis'),
@@ -39,6 +40,7 @@ const start = async () => {
     import('../server/services/invoicing/driveSync'),
     import('../server/services/invoicing/driveState'),
     import('../server/services/system/storageHealth'),
+    import('../server/storage/connection'),
   ]);
 
   const redisUrl = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379';
@@ -166,14 +168,23 @@ const start = async () => {
     : undefined;
 
   // Writes a line to the server log when storage is getting full, so it also shows up outside the CRM.
-  const checkStorage = () =>
-    getStorageHealth({ force: true })
-      .then((health) => {
+  const checkStorage = async () => {
+    try {
+      const rows = await db.select({ id: workspaces.id }).from(workspaces);
+      for (const row of rows) {
+        const health = await getStorageHealth(row.id, { force: true });
         if (health.level !== 'ok') console.warn(`[storage ${health.level}] ${health.headline}`);
-      })
-      .catch((error) => console.error('Storage check failed', error));
+      }
+    } catch (error) {
+      console.error('Storage check failed', error);
+    }
+  };
   void checkStorage();
   const storageTimer = setInterval(() => void checkStorage(), 30 * 60_000);
+  // Copies existing files into a newly connected bucket in the background.
+  const migrationTimer = setInterval(() => {
+    void sweepStorageMigrations().catch((error) => console.error('Storage move failed', error));
+  }, 5_000);
 
   const control = new IORedis.default(redisUrl, { maxRetriesPerRequest: null });
   await control.subscribe('shotlin:whatsapp:control');
@@ -216,6 +227,7 @@ const start = async () => {
     clearInterval(reconcileTimer);
     if (driveTimer) clearInterval(driveTimer);
     clearInterval(storageTimer);
+    clearInterval(migrationTimer);
     await whatsappManager.shutdown();
     await outboundWorker.close();
     await metaWorker.close();

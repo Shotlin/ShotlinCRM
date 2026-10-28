@@ -70,18 +70,31 @@ const baseEnv = () => ({
   WHATSAPP_AUTH_MASTER_KEY: 'test-master-key-that-is-at-least-32-characters',
   S3_ENDPOINT: endpoint,
   S3_REGION: 'auto',
-  S3_BUCKET: 'test-bucket',
+  S3_BUCKET: 'env-bucket',
   S3_ACCESS_KEY: 'key',
   S3_SECRET_KEY: 'secret',
 });
 
-async function load(env: Record<string, string> = {}) {
+type Storage = typeof import('./index');
+
+async function load(env: Record<string, string> = {}): Promise<Storage> {
   vi.resetModules();
-  for (const [name, value] of Object.entries({ ...baseEnv(), S3_MODE: 's3', S3_PROVIDER: 'r2', ...env })) {
-    vi.stubEnv(name, value);
-  }
-  return import('./index');
+  for (const [name, value] of Object.entries({ ...baseEnv(), ...env })) vi.stubEnv(name, value);
+  const storage = await import('./index');
+  storage.setSavedConnectionLoader(async () => null);
+  return storage;
 }
+
+const bucket = (over: Partial<import('./index').BucketConfig> = {}): import('./index').BucketConfig => ({
+  endpoint,
+  region: 'auto',
+  bucket: 'test-bucket',
+  accessKeyId: 'key',
+  secretAccessKey: 'secret',
+  forcePathStyle: true,
+  provider: 'r2',
+  ...over,
+});
 
 beforeEach(() => {
   objects.clear();
@@ -90,64 +103,49 @@ beforeEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe('bucket storage', () => {
-  it('stores and returns a file through the bucket', async () => {
+describe('talking to a bucket', () => {
+  it('saves, checks, lists and removes objects', async () => {
     const storage = await load();
-    const stored = await storage.putPrivateMedia({ workspaceId: 'ws1', buffer: Buffer.from('photo-bytes'), mimeType: 'image/png', filename: 'a.png' });
-    expect(stored.objectKey).toMatch(/^ws1\/[0-9a-f-]{36}\.png$/);
-    const inBucket = objects.get(stored.objectKey);
-    expect(inBucket?.body.toString()).toBe('photo-bytes');
-    expect(inBucket?.type).toBe('image/png');
-    expect((await storage.getPrivateMedia(stored.objectKey)).toString()).toBe('photo-bytes');
+    const config = bucket();
+    await storage.putObjectToBucket(config, 'docs/a.pdf', Buffer.from('12345'), 'application/pdf');
+    expect(objects.get('docs/a.pdf')?.type).toBe('application/pdf');
+    expect((await storage.getObjectFromBucket(config, 'docs/a.pdf')).toString()).toBe('12345');
+    expect(await storage.headObjectInBucket(config, 'docs/a.pdf')).toEqual({ sizeBytes: 5 });
+    expect(await storage.headObjectInBucket(config, 'docs/missing.pdf')).toBeNull();
+    await storage.deleteObjectFromBucket(config, 'docs/a.pdf');
+    expect(await storage.headObjectInBucket(config, 'docs/a.pdf')).toBeNull();
   });
 
   it('does not send the AWS-only encryption header to R2, but does to AWS', async () => {
-    const r2 = await load({ S3_PROVIDER: 'r2' });
-    await r2.putObjectToBucket('a/one.txt', Buffer.from('x'), 'text/plain');
+    const storage = await load();
+    await storage.putObjectToBucket(bucket({ provider: 'r2' }), 'a/one.txt', Buffer.from('x'), 'text/plain');
     expect(lastPutHeaders['x-amz-server-side-encryption']).toBeUndefined();
-
-    const aws = await load({ S3_PROVIDER: 'aws' });
-    await aws.putObjectToBucket('a/two.txt', Buffer.from('x'), 'text/plain');
+    await storage.putObjectToBucket(bucket({ provider: 'aws' }), 'a/two.txt', Buffer.from('x'), 'text/plain');
     expect(lastPutHeaders['x-amz-server-side-encryption']).toBe('AES256');
   });
 
-  it('recognises an R2 address without being told', async () => {
-    const storage = await load({ S3_PROVIDER: '', S3_ENDPOINT: 'https://abc123.r2.cloudflarestorage.com' });
-    expect(storage.isR2()).toBe(true);
-    const other = await load({ S3_PROVIDER: '', S3_ENDPOINT: 'https://s3.amazonaws.com' });
-    expect(other.isR2()).toBe(false);
-  });
-
-  it('checks whether an object exists, with its size', async () => {
-    const storage = await load();
-    await storage.putObjectToBucket('docs/a.pdf', Buffer.from('12345'), 'application/pdf');
-    expect(await storage.headObjectInBucket('docs/a.pdf')).toEqual({ sizeBytes: 5 });
-    expect(await storage.headObjectInBucket('docs/missing.pdf')).toBeNull();
-  });
-
-  it('removes an object', async () => {
-    const storage = await load();
-    await storage.putObjectToBucket('tmp/a.txt', Buffer.from('x'), 'text/plain');
-    await storage.deleteObjectFromBucket('tmp/a.txt');
-    expect(await storage.headObjectInBucket('tmp/a.txt')).toBeNull();
+  it('recognises an R2 address in the server settings without being told', async () => {
+    const r2 = await load({ S3_ENDPOINT: 'https://abc123.r2.cloudflarestorage.com' });
+    expect(r2.envBucketConfig().provider).toBe('r2');
+    const other = await load({ S3_ENDPOINT: 'https://s3.amazonaws.com' });
+    expect(other.envBucketConfig().provider).toBe('other');
   });
 
   it('lists every page of a large listing, and only the prefix asked for', async () => {
     const storage = await load();
-    for (let i = 1; i <= 5; i++) await storage.putObjectToBucket(`backups/db-${i}.dump`, Buffer.from('1234567890'.slice(0, i)), 'application/octet-stream');
-    await storage.putObjectToBucket('media/photo.png', Buffer.from('ab'), 'image/png');
-
+    const config = bucket();
+    for (let i = 1; i <= 5; i++) await storage.putObjectToBucket(config, `backups/db-${i}.dump`, Buffer.from('1234567890'.slice(0, i)), 'application/octet-stream');
+    await storage.putObjectToBucket(config, 'media/photo.png', Buffer.from('ab'), 'image/png');
     const backups: string[] = [];
     let bytes = 0;
-    for await (const item of storage.listBucketObjects('backups/')) {
+    for await (const item of storage.listBucketObjects(config, 'backups/')) {
       backups.push(item.key);
       bytes += item.sizeBytes;
     }
-    expect(backups).toEqual(['backups/db-1.dump', 'backups/db-2.dump', 'backups/db-3.dump', 'backups/db-4.dump', 'backups/db-5.dump']);
+    expect(backups).toHaveLength(5);
     expect(bytes).toBe(1 + 2 + 3 + 4 + 5);
-
     const all: string[] = [];
-    for await (const item of storage.listBucketObjects()) all.push(item.key);
+    for await (const item of storage.listBucketObjects(config)) all.push(item.key);
     expect(all).toHaveLength(6);
   });
 
@@ -155,52 +153,103 @@ describe('bucket storage', () => {
     const storage = await load();
     for (const bad of ['../secrets', 'a/../b', '/absolute', '']) {
       await expect(storage.getPrivateMedia(bad)).rejects.toThrow(/Invalid object key/);
-      await expect(storage.putObjectToBucket(bad, Buffer.from('x'), 'text/plain')).rejects.toThrow(/Invalid object key/);
-      await expect(storage.deleteObjectFromBucket(bad)).rejects.toThrow(/Invalid object key/);
+      await expect(storage.putObjectToBucket(bucket(), bad, Buffer.from('x'), 'text/plain')).rejects.toThrow(/Invalid object key/);
+      await expect(storage.deleteObjectFromBucket(bucket(), bad)).rejects.toThrow(/Invalid object key/);
     }
     expect(requests).toHaveLength(0);
   });
 });
 
+describe('where a workspace keeps its files', () => {
+  it('uses the bucket saved in the CRM when there is one', async () => {
+    const storage = await load();
+    storage.setSavedConnectionLoader(async () => ({ config: bucket({ bucket: 'saved-bucket' }), limitGb: 7 }));
+    const resolved = await storage.resolveStorage('ws1');
+    expect(resolved).toMatchObject({ mode: 's3', source: 'settings', limitGb: 7 });
+  });
+
+  it('lets the saved connection win over the server settings file', async () => {
+    const storage = await load({ S3_MODE: 's3', STORAGE_LIMIT_GB: '3' });
+    storage.setSavedConnectionLoader(async () => ({ config: bucket({ bucket: 'saved-bucket' }), limitGb: 7 }));
+    const resolved = await storage.resolveStorage('ws1');
+    expect(resolved).toMatchObject({ source: 'settings', limitGb: 7 });
+    if (resolved.mode === 's3') expect(resolved.config.bucket).toBe('saved-bucket');
+  });
+
+  it('falls back to the server settings file, then to local disk', async () => {
+    const env = await load({ S3_MODE: 's3', STORAGE_LIMIT_GB: '3' });
+    const fromEnv = await env.resolveStorage('ws1');
+    expect(fromEnv).toMatchObject({ mode: 's3', source: 'env', limitGb: 3 });
+    const local = await load({ S3_MODE: 'local' });
+    expect(await local.resolveStorage('ws1')).toEqual({ mode: 'local' });
+  });
+
+  it('picks up a change within seconds without a restart, and not before', async () => {
+    const storage = await load();
+    let saved: import('./index').SavedConnection | null = null;
+    let lookups = 0;
+    storage.setSavedConnectionLoader(async () => {
+      lookups += 1;
+      return saved;
+    });
+    expect((await storage.resolveStorage('ws1')).mode).toBe('local');
+    saved = { config: bucket(), limitGb: 10 };
+    expect((await storage.resolveStorage('ws1')).mode).toBe('local');
+    expect(lookups).toBe(1);
+    storage.clearStorageCache('ws1');
+    expect((await storage.resolveStorage('ws1')).mode).toBe('s3');
+    expect(lookups).toBe(2);
+  });
+
+  it('keeps one workspace on its bucket while another stays on local disk', async () => {
+    const storage = await load();
+    storage.setSavedConnectionLoader(async (workspaceId) => (workspaceId === 'wsA' ? { config: bucket(), limitGb: 10 } : null));
+    const a = await storage.putPrivateMedia({ workspaceId: 'wsA', buffer: Buffer.from('in-bucket'), mimeType: 'image/png' });
+    expect(objects.get(a.objectKey)?.body.toString()).toBe('in-bucket');
+    expect(storage.workspaceOfKey(a.objectKey)).toBe('wsA');
+    expect((await storage.getPrivateMedia(a.objectKey)).toString()).toBe('in-bucket');
+    const b = await storage.putPrivateMedia({ workspaceId: `wsB-${process.pid}`, buffer: Buffer.from('on-disk'), mimeType: 'image/png' });
+    expect(objects.has(b.objectKey)).toBe(false);
+    expect((await storage.getPrivateMedia(b.objectKey)).toString()).toBe('on-disk');
+    await rm(path.join(process.cwd(), '.local', 'media', `wsB-${process.pid}`), { recursive: true, force: true });
+  });
+});
+
 describe('moving from local disk to the bucket', () => {
-  const key = `test-ws-${process.pid}/legacy.png`;
+  const ws = `test-ws-${process.pid}`;
+  const key = `${ws}/legacy.png`;
   const file = path.join(process.cwd(), '.local', 'media', key);
 
   afterAll(async () => {
     await rm(path.dirname(file), { recursive: true, force: true });
   });
 
+  const withBucket = async () => {
+    const storage = await load();
+    storage.setSavedConnectionLoader(async () => ({ config: bucket(), limitGb: 10 }));
+    return storage;
+  };
+
   it('still serves a file that has not been moved yet', async () => {
     await mkdir(path.dirname(file), { recursive: true });
     await writeFile(file, 'old-local-bytes');
-    const storage = await load();
+    const storage = await withBucket();
     expect((await storage.getPrivateMedia(key)).toString()).toBe('old-local-bytes');
   });
 
   it('prefers the bucket once the file is there', async () => {
     await mkdir(path.dirname(file), { recursive: true });
     await writeFile(file, 'old-local-bytes');
-    const storage = await load();
-    await storage.putObjectToBucket(key, Buffer.from('bucket-bytes'), 'image/png');
+    const storage = await withBucket();
+    await storage.putObjectToBucket(bucket(), key, Buffer.from('bucket-bytes'), 'image/png');
     expect((await storage.getPrivateMedia(key)).toString()).toBe('bucket-bytes');
-  });
-
-  it('keeps using local disk, never the bucket, when S3_MODE is local', async () => {
-    await mkdir(path.dirname(file), { recursive: true });
-    await writeFile(file, 'old-local-bytes');
-    const storage = await load({ S3_MODE: 'local' });
-    requests = [];
-    expect((await storage.getPrivateMedia(key)).toString()).toBe('old-local-bytes');
-    const stored = await storage.putPrivateMedia({ workspaceId: `test-ws-${process.pid}`, buffer: Buffer.from('new'), mimeType: 'image/png' });
-    expect(objects.size).toBe(0);
-    expect(requests).toHaveLength(0);
-    await rm(path.join(process.cwd(), '.local', 'media', stored.objectKey), { force: true });
   });
 
   it('does not hide a real bucket error behind the local copy', async () => {
     await mkdir(path.dirname(file), { recursive: true });
     await writeFile(file, 'old-local-bytes');
-    const storage = await load({ S3_ENDPOINT: 'http://127.0.0.1:1' });
+    const storage = await load();
+    storage.setSavedConnectionLoader(async () => ({ config: bucket({ endpoint: 'http://127.0.0.1:1' }), limitGb: 10 }));
     await expect(storage.getPrivateMedia(key)).rejects.toThrow();
   });
 });

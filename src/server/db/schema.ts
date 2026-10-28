@@ -351,6 +351,25 @@ export const messageTemplates = pgTable(
   (table) => [index('templates_workspace_idx').on(table.workspaceId)],
 );
 
+// The R2 bucket a workspace stores its files in. The keys are encrypted and never sent back to the browser.
+export const storageConnections = pgTable('storage_connections', {
+  workspaceId: text('workspace_id').primaryKey().references(() => workspaces.id, { onDelete: 'cascade' }),
+  provider: text('provider').notNull().default('r2'),
+  accountId: text('account_id').notNull(),
+  bucket: text('bucket').notNull(),
+  accessKeyCiphertext: text('access_key_ciphertext').notNull(),
+  secretKeyCiphertext: text('secret_key_ciphertext').notNull(),
+  limitGb: integer('limit_gb').notNull().default(10),
+  // migrating: existing files are being copied. connected: new files go to the bucket. error: see lastError.
+  state: text('state').notNull().default('migrating'),
+  totalFiles: integer('total_files').notNull().default(0),
+  copiedFiles: integer('copied_files').notNull().default(0),
+  lastError: text('last_error'),
+  connectedAt: timestamp('connected_at', { withTimezone: true }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
 export const whatsappConnections = pgTable(
   'whatsapp_connections',
   {

@@ -110,3 +110,94 @@
 .storage-card-critical .storage-bar span {
   background: var(--red);
 }
+
+.storage-connect {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 16px;
+  padding: 20px;
+}
+
+.storage-connect h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.storage-connect p {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.storage-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.storage-help {
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--soft);
+  color: var(--ink-soft);
+}
+
+.storage-help summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.storage-help ol {
+  margin: 10px 0 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.storage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.storage-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.storage-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.storage-steps li.ok {
+  color: var(--green);
+}
+
+.storage-steps li.bad {
+  color: var(--red);
+}
+
+.storage-steps em {
+  display: block;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.storage-pass {
+  color: var(--green) !important;
+  font-weight: 600;
+}
+
+.storage-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+

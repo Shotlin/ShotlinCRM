@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   const context = await getAuthContext();
   if (!context) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   try {
-    const health = await getStorageHealth({ force: request.nextUrl.searchParams.get('refresh') === '1' });
+    const health = await getStorageHealth(context.workspaceId, { force: request.nextUrl.searchParams.get('refresh') === '1' });
     return NextResponse.json(health, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     console.error('Storage check failed', error);

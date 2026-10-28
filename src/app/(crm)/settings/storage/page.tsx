@@ -3,6 +3,7 @@
 import { LoaderCircle, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { StorageConnection } from './StorageConnection';
 
 type Item = {
   id: string;
@@ -52,6 +53,7 @@ export default function StoragePage() {
           </button>
         }
       />
+      <StorageConnection onChanged={() => void load(true)} />
       {error ? <p className="form-error">{error}</p> : null}
       {health ? (
         <>
