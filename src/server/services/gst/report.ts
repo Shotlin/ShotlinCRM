@@ -141,6 +141,8 @@ export function buildGstReport(docs: ReportDoc[], expenses: ReportExpense[], fy:
     if (doc.docNo.split('/')[2] !== fy) continue;
     const result = countedDate(doc);
     if ('reason' in result) {
+      // A cancelled invoice is finished business, so it is not listed as something waiting to count.
+      if (doc.cancelled) continue;
       excluded.push({ docNo: doc.docNo, client: doc.client, docType: doc.docType, reason: result.reason, taxableMinor: doc.taxableMinor, taxMinor: doc.taxMinor, grossMinor: doc.grandMinor });
       continue;
     }

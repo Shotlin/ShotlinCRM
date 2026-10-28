@@ -75,7 +75,8 @@ export function InvoicesPage() {
   const filteredInvoices = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return invoiceRows.filter((invoice) => {
-      const matchesFilter = filter === 'all' || invoice.displayStatus === filter;
+      // Cancelled invoices stay on record but are out of sight until you pick the Cancelled filter.
+      const matchesFilter = filter === 'all' ? invoice.displayStatus !== 'cancelled' : invoice.displayStatus === filter;
       const matchesSearch =
         !needle ||
         invoice.number.toLowerCase().includes(needle) ||
@@ -215,7 +216,7 @@ export function InvoicesPage() {
                 value={filter}
                 onChange={(event) => setFilter(event.target.value as InvoiceFilter)}
               >
-                <option value="all">All statuses</option>
+                <option value="all">All active</option>
                 <option value="overdue">Overdue</option>
                 <option value="partially_paid">Partially paid</option>
                 <option value="sent">Sent</option>
