@@ -6,6 +6,9 @@ import { Link, useNavigate, useParams } from '@/lib/router';
 import { describeMilestones, gstOf, splitByPercent } from '@/server/services/deals/milestones';
 import { useCrmStore } from '@/store/crmStore';
 import { day, inr } from '../gst/format';
+import { BlockEditor } from './BlockEditor';
+import { SigningPanel } from './SigningPanel';
+import { starterBlocks, type Block } from '@/server/services/deals/content';
 
 type Row = { key: string; title: string; trigger: string; amount: string; dueOn: string };
 type Form = {
@@ -22,6 +25,8 @@ type Form = {
   durationDays: string;
   brief: string;
   sourceDocumentId: string;
+  mode: 'upload' | 'write';
+  blocks: Block[];
   rows: Row[];
 };
 type Loaded = {
@@ -31,7 +36,8 @@ type Loaded = {
   leadId: string | null;
   title: string;
   reference: string;
-  status: Form['status'];
+  status: Form['status'] | 'client_signed' | 'changes_requested';
+  reviewNote: string;
   baseAmountMinor: number;
   gstRatePct: number;
   issuedOn: string | null;
@@ -42,6 +48,7 @@ type Loaded = {
   fileSize: number | null;
   hasFile: boolean;
   sourceDocumentId: string | null;
+  content: Block[] | null;
   projectId: string | null;
   milestones: { id: string; title: string; trigger: string; baseMinor: number; dueOn: string | null }[];
 };
@@ -58,7 +65,7 @@ const fromLoaded = (doc: Loaded): Form => ({
   leadId: doc.leadId ?? '',
   title: doc.title,
   reference: doc.reference,
-  status: doc.status,
+  status: (doc.status === 'client_signed' || doc.status === 'changes_requested' ? 'sent' : doc.status) as Form['status'],
   base: rupees(doc.baseAmountMinor),
   gstRatePct: String(doc.gstRatePct),
   issuedOn: doc.issuedOn ?? '',
@@ -66,6 +73,8 @@ const fromLoaded = (doc: Loaded): Form => ({
   durationDays: doc.durationDays ? String(doc.durationDays) : '',
   brief: doc.brief,
   sourceDocumentId: doc.sourceDocumentId ?? '',
+  mode: doc.content ? 'write' : 'upload',
+  blocks: doc.content ?? [],
   rows: doc.milestones.map((m) => ({ key: m.id, title: m.title, trigger: m.trigger, amount: rupees(m.baseMinor), dueOn: m.dueOn ?? '' })),
 });
 
@@ -82,18 +91,19 @@ export function AgreementEditorPage() {
 
   const [form, setForm] = useState<Form>({
     kind: 'agreement', clientId: '', leadId: '', title: '', reference: '', status: 'draft', base: '', gstRatePct: '18',
-    issuedOn: today(), signedOn: '', durationDays: '', brief: '', sourceDocumentId: '', rows: [blankRow(), blankRow(), blankRow()],
+    issuedOn: today(), signedOn: '', durationDays: '', brief: '', sourceDocumentId: '', mode: 'upload', blocks: [], rows: [blankRow(), blankRow(), blankRow()],
   });
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [loading, setLoading] = useState(!isNew);
   const [pending, setPending] = useState<File | null>(null);
   const [split, setSplit] = useState('50,30,20');
   const [kickoff, setKickoff] = useState(today());
-  const [busy, setBusy] = useState<'save' | 'project' | 'upload' | null>(null);
+  const [busy, setBusy] = useState<'save' | 'project' | 'upload' | 'preview' | null>(null);
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
 
-  const locked = Boolean(loaded?.projectId);
+  const signedLock = Boolean(loaded && (loaded.status === 'client_signed' || loaded.status === 'signed'));
+  const locked = Boolean(loaded?.projectId) || signedLock;
   const set = <K extends keyof Form>(key: K, value: Form[K]) => setForm((current) => ({ ...current, [key]: value }));
 
   useEffect(() => {
@@ -123,6 +133,15 @@ export function AgreementEditorPage() {
       .catch((problem: Error) => setError(problem.message))
       .finally(() => setLoading(false));
   }, [isNew, params.dealId]);
+
+  const refreshLoaded = async () => {
+    const fresh = await fetch(`/api/agreements/${params.dealId}`, { cache: 'no-store' });
+    if (fresh.ok) {
+      const doc = (await fresh.json()) as Loaded;
+      setLoaded(doc);
+      setForm(fromLoaded(doc));
+    }
+  };
 
   const baseMinor = paise(form.base);
   const rate = Math.round(Number(form.gstRatePct) || 0);
@@ -171,6 +190,23 @@ export function AgreementEditorPage() {
       milestones: form.rows
         .filter((row) => row.title.trim() || row.amount.trim())
         .map((row) => ({ title: row.title, trigger: row.trigger, amountRupees: paise(row.amount) / 100, dueOn: row.dueOn || null })),
+  };
+
+  const chooseMode = (mode: Form['mode']) =>
+    setForm((current) => ({ ...current, mode, blocks: mode === 'write' && current.blocks.length === 0 ? starterBlocks(current.kind) : current.blocks }));
+
+  const preview = async () => {
+    setBusy('preview');
+    setError('');
+    try {
+      const response = await fetch('/api/agreements/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!response.ok) throw new Error(((await response.json().catch(() => null)) as { error?: string } | null)?.error ?? 'Could not build the preview.');
+      window.open(URL.createObjectURL(await response.blob()), '_blank');
+    } catch (problem) {
+      setError(problem instanceof Error ? problem.message : 'Could not build the preview.');
+    } finally {
+      setBusy(null);
+    }
   };
 
   const save = async () => {
@@ -262,9 +298,9 @@ export function AgreementEditorPage() {
           {!isNew && loaded?.kind === 'proposal' ? (
             <Link to={`/agreements/new?kind=agreement&from=${loaded.id}`} className="btn btn-secondary"><FileSignature size={15} aria-hidden="true" /> Make agreement from this</Link>
           ) : null}
-          <button type="button" className="btn btn-primary" disabled={busy !== null} onClick={() => void save()}>
+          {!signedLock ? <button type="button" className="btn btn-primary" disabled={busy !== null} onClick={() => void save()}>
             {busy === 'save' ? <LoaderCircle className="spin" size={15} aria-hidden="true" /> : <Check size={15} aria-hidden="true" />} Save
-          </button>
+          </button> : null}
         </div>
       </div>
 
@@ -280,15 +316,20 @@ export function AgreementEditorPage() {
             <div className="bk-inline">
               <p>Start the project from this agreement. The payment milestones move across, and you can then add the timeline and raise each invoice.</p>
               <label className="bk-field">Kickoff date<input type="date" value={kickoff} onChange={(event) => setKickoff(event.target.value)} /></label>
-              <button type="button" className="btn btn-primary" disabled={busy !== null || !loaded.milestones.length} onClick={() => void createProject()}>
+              <button type="button" className="btn btn-primary" disabled={busy !== null || !loaded.milestones.length || loaded.status === 'client_signed'} onClick={() => void createProject()}>
                 {busy === 'project' ? <LoaderCircle className="spin" size={15} aria-hidden="true" /> : <FolderKanban size={15} aria-hidden="true" />} Create project
               </button>
               {!loaded.milestones.length ? <p className="bk-sub">Add and save the payment milestones first.</p> : null}
+              {loaded.status === 'client_signed' ? <p className="bk-sub">Approve the client's signature below first, then start the project.</p> : null}
             </div>
           )}
         </section>
       ) : null}
 
+      {!isNew && loaded ? <SigningPanel dealId={loaded.id} status={loaded.status} hasFile={loaded.hasFile} reviewNote={loaded.reviewNote} onChanged={() => void refreshLoaded()} /> : null}
+      {signedLock ? <p className="bk-note">This document is signed, so it is locked. Start a new version if something has to change.</p> : null}
+
+      <div className={signedLock ? 'bk-locked' : undefined} inert={signedLock}>
       <section className="card section-card">
         <h3><FileSignature size={17} aria-hidden="true" /> Details</h3>
         <div className="bk-form">
@@ -327,14 +368,34 @@ export function AgreementEditorPage() {
       </section>
 
       <section className="card section-card">
-        <h3><Upload size={17} aria-hidden="true" /> The PDF</h3>
-        <div className="bk-drop">
-          <input ref={fileInput} type="file" accept="application/pdf" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); event.target.value = ''; }} />
-          <p>{fileLabel ? <><b>{fileLabel}</b>{loaded?.fileSize ? ` · ${(loaded.fileSize / 1024).toFixed(0)} KB, stored compressed in R2` : ' · will upload when you save'}</> : 'No PDF yet. Upload the document you wrote.'}</p>
-          <button type="button" className="btn btn-secondary" disabled={busy === 'upload'} onClick={() => fileInput.current?.click()}>
-            {busy === 'upload' ? <LoaderCircle className="spin" size={15} aria-hidden="true" /> : <Upload size={15} aria-hidden="true" />} {fileLabel ? 'Replace PDF' : 'Choose PDF'}
-          </button>
+        <h3><Upload size={17} aria-hidden="true" /> The document</h3>
+        <div className="bk-mode" role="tablist" aria-label="How the document is made">
+          <button type="button" role="tab" aria-selected={form.mode === 'upload'} className={form.mode === 'upload' ? 'on' : ''} onClick={() => chooseMode('upload')}>Upload a PDF</button>
+          <button type="button" role="tab" aria-selected={form.mode === 'write'} className={form.mode === 'write' ? 'on' : ''} onClick={() => chooseMode('write')}>Write it here</button>
         </div>
+        {form.mode === 'upload' ? (
+          <div className="bk-drop">
+            <input ref={fileInput} type="file" accept="application/pdf" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); event.target.value = ''; }} />
+            <p>{fileLabel ? <><b>{fileLabel}</b>{loaded?.fileSize ? ` · ${(loaded.fileSize / 1024).toFixed(0)} KB, stored compressed in R2` : ' · will upload when you save'}</> : 'No PDF yet. Upload the document you wrote.'}</p>
+            <button type="button" className="btn btn-secondary" disabled={busy === 'upload'} onClick={() => fileInput.current?.click()}>
+              {busy === 'upload' ? <LoaderCircle className="spin" size={15} aria-hidden="true" /> : <Upload size={15} aria-hidden="true" />} {fileLabel ? 'Replace PDF' : 'Choose PDF'}
+            </button>
+          </div>
+        ) : (
+          <>
+            <p className="bk-note bk-note-top">
+              Write the body here and the PDF is made for you when you save. The first page (parties, fee), the payment milestones and the signature boxes are added automatically from the details above and below.
+            </p>
+            <div className="bk-row-actions bk-row-top">
+              <button type="button" className="btn btn-secondary" onClick={() => { if (form.blocks.length === 0 || window.confirm('Replace what is written with the starting template?')) set('blocks', starterBlocks(form.kind)); }}>Start from a template</button>
+              <button type="button" className="btn btn-secondary" disabled={busy !== null} onClick={() => void preview()}>
+                {busy === 'preview' ? <LoaderCircle className="spin" size={15} aria-hidden="true" /> : <FileSignature size={15} aria-hidden="true" />} Preview the PDF
+              </button>
+              {loaded?.hasFile ? <span className="bk-sub">The saved PDF is updated every time you press Save.</span> : null}
+            </div>
+            <BlockEditor blocks={form.blocks} onChange={(next) => set('blocks', next)} disabled={signedLock} />
+          </>
+        )}
       </section>
 
       <section className="card section-card">
@@ -377,7 +438,9 @@ export function AgreementEditorPage() {
         ) : null}
       </section>
 
-      {!isNew && !loaded?.projectId ? (
+      </div>
+
+      {!isNew && !loaded?.projectId && !signedLock ? (
         <button type="button" className="btn btn-secondary bk-danger" onClick={() => void remove()}><Trash2 size={15} aria-hidden="true" /> Delete this document</button>
       ) : null}
       {loaded?.issuedOn ? <p className="bk-foot">Issued {day(loaded.issuedOn)}</p> : null}

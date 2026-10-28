@@ -6,7 +6,7 @@ import { day } from '../gst/format';
 
 type ShareRow = { id: string; label: string; createdAt: string; expiresAt: string; revoked: boolean; expired: boolean; viewCount: number; lastViewedAt: string | null };
 
-export function SharePanel({ kind, targetId }: { kind: 'project' | 'invoice'; targetId: string }) {
+export function SharePanel({ kind, targetId }: { kind: 'project' | 'invoice' | 'agreement'; targetId: string }) {
   const [links, setLinks] = useState<ShareRow[]>([]);
   const [label, setLabel] = useState('');
   const [days, setDays] = useState('30');
@@ -47,10 +47,12 @@ export function SharePanel({ kind, targetId }: { kind: 'project' | 'invoice'; ta
 
   return (
     <section className="card section-card">
-      <h3><Link2 size={17} aria-hidden="true" /> {kind === 'invoice' ? 'Share this invoice' : 'Client link'}</h3>
+      <h3><Link2 size={17} aria-hidden="true" /> {kind === 'invoice' ? 'Share this invoice' : kind === 'agreement' ? 'Signing link' : 'Client link'}</h3>
       <p className="bk-note bk-note-top">
         <ShieldCheck size={14} aria-hidden="true" />{' '}
-        {kind === 'invoice'
+        {kind === 'agreement'
+          ? 'A private page for your client, with no login. They read the document and sign on screen.'
+          : kind === 'invoice'
           ? 'A private page for your client, with no login. It shows this one invoice and lets them download the PDF, and nothing else. It always shows the latest version.'
           : 'A private page for your client, with no login. It shows the brief, timeline, milestones, the signed agreement and the invoices of this project, and nothing else.'}{' '}
         Each link has a secret that cannot be guessed, expires on its own, and can be stopped any time.

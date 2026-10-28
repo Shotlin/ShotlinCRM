@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
   if (!context) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (context.role !== 'owner') return NextResponse.json({ error: 'Only an owner can create client links.' }, { status: 403 });
   if (!(await rateLimit(`share-create:${context.workspaceId}`, 20, 60))) return NextResponse.json({ error: 'Too many links. Wait a minute.' }, { status: 429 });
-  const parsed = z.object({ kind: z.enum(['project', 'invoice']).default('project'), targetId: z.string().min(1), label: z.string().trim().max(120).default(''), days: z.number().int().min(1).max(180).default(30) }).safeParse(await request.json().catch(() => null));
+  const parsed = z.object({ kind: z.enum(['project', 'invoice', 'agreement']).default('project'), targetId: z.string().min(1), label: z.string().trim().max(120).default(''), days: z.number().int().min(1).max(180).default(30) }).safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: 'Check the details.' }, { status: 400 });
   try {
     const link = await createShareLink(context.workspaceId, parsed.data.kind, parsed.data.targetId, parsed.data.label, parsed.data.days);

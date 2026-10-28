@@ -6,6 +6,9 @@ import { clients, dealDocuments, invoiceItems, invoices, leads, payments, projec
 import { deletePrivateMedia, putPrivateMedia } from '../../storage';
 import { gstModelFromRows } from '../invoicing/model';
 import { gstOf, shareBp } from './milestones';
+import type { Block } from './content';
+import { renderDealPdf, renderStoredDeal } from './render';
+import { isDocumentLocked, LOCKED_NOTE } from './signing';
 
 const DAY = 86_400_000;
 const ymd = (value: Date | null) => (value ? new Date(value.getTime() + 5.5 * 3600_000).toISOString().slice(0, 10) : null);
@@ -35,6 +38,12 @@ export const dealInputSchema = z
     durationDays: z.number().int().min(1).max(1500).nullable().optional(),
     brief: z.string().trim().max(10_000).default(''),
     sourceDocumentId: z.string().min(1).nullable().optional(),
+    // Blocks of a document written in the CRM. Leave out to keep what is there; null means an uploaded PDF.
+    content: z
+      .array(z.object({ id: z.string().min(1).max(40), type: z.enum(['h1', 'h2', 'p', 'bullets', 'numbered', 'table', 'pagebreak']), text: z.string().max(20_000) }))
+      .max(300)
+      .nullable()
+      .optional(),
     milestones: z.array(milestoneInputSchema).max(12).default([]),
   })
   .superRefine((value, ctx) => {
@@ -92,18 +101,22 @@ export async function createDeal(workspaceId: string, input: DealInput) {
   await assertParties(workspaceId, input);
   const id = `deal-${randomUUID()}`;
   await db.transaction(async (tx) => {
-    await tx.insert(dealDocuments).values({ id, workspaceId, ...fields(input) });
+    await tx.insert(dealDocuments).values({ id, workspaceId, ...fields(input), content: input.content ?? null });
     if (input.milestones.length) await tx.insert(projectMilestones).values(milestoneRows(workspaceId, id, input));
   });
+  if (input.content && input.content.length > 0) await regenerateWrittenPdf(workspaceId, id);
   return id;
 }
 
 export async function updateDeal(workspaceId: string, id: string, input: DealInput) {
+  if (await isDocumentLocked(id)) throw new Error(LOCKED_NOTE);
   await assertParties(workspaceId, input);
   await db.transaction(async (tx) => {
     const [existing] = await tx.select().from(dealDocuments).where(and(eq(dealDocuments.id, id), eq(dealDocuments.workspaceId, workspaceId))).for('update').limit(1);
     if (!existing) throw new Error('Not found');
-    await tx.update(dealDocuments).set({ ...fields(input), kind: existing.kind, updatedAt: new Date() }).where(eq(dealDocuments.id, id));
+    // The status moves on its own while a client is signing, so the form cannot overwrite it.
+    const status = existing.status === 'changes_requested' ? existing.status : input.status;
+    await tx.update(dealDocuments).set({ ...fields(input), status, kind: existing.kind, ...(input.content !== undefined ? { content: input.content } : {}), updatedAt: new Date() }).where(eq(dealDocuments.id, id));
     // Once a project exists the milestones live on the project and are changed there.
     const [project] = await tx.select({ id: projects.id }).from(projects).where(eq(projects.agreementId, id)).limit(1);
     if (!project) {
@@ -111,21 +124,59 @@ export async function updateDeal(workspaceId: string, id: string, input: DealInp
       if (input.milestones.length) await tx.insert(projectMilestones).values(milestoneRows(workspaceId, id, input));
     }
   });
+  if (input.content && input.content.length > 0) await regenerateWrittenPdf(workspaceId, id);
 }
 
 export async function attachDealFile(workspaceId: string, id: string, buffer: Buffer, filename: string) {
+  if (await isDocumentLocked(id)) throw new Error(LOCKED_NOTE);
   if (buffer.length === 0 || buffer.length > 25 * 1024 * 1024) throw new Error('The PDF must be under 25 MB');
   if (buffer.subarray(0, 5).toString() !== '%PDF-') throw new Error('Only PDF files can be uploaded');
   const [existing] = await db.select().from(dealDocuments).where(and(eq(dealDocuments.id, id), eq(dealDocuments.workspaceId, workspaceId))).limit(1);
   if (!existing) throw new Error('Not found');
   // Stored compressed in R2, like every other file.
   const stored = await putPrivateMedia({ workspaceId, buffer, mimeType: 'application/pdf', filename, optimize: 'outgoing' });
-  await db.update(dealDocuments).set({ fileKey: stored.objectKey, fileName: filename.slice(-160), fileSize: stored.sizeBytes, updatedAt: new Date() }).where(eq(dealDocuments.id, id));
+  await db.update(dealDocuments).set({ fileKey: stored.objectKey, fileName: filename.slice(-160), fileSize: stored.sizeBytes, content: null, updatedAt: new Date() }).where(eq(dealDocuments.id, id));
   if (existing.fileKey) await deletePrivateMedia(existing.fileKey).catch(() => undefined);
   return stored.sizeBytes;
 }
 
+// Builds the PDF from the written blocks and stores it, replacing the previous file.
+export async function regenerateWrittenPdf(workspaceId: string, id: string) {
+  if (await isDocumentLocked(id)) throw new Error(LOCKED_NOTE);
+  const [existing] = await db.select().from(dealDocuments).where(and(eq(dealDocuments.id, id), eq(dealDocuments.workspaceId, workspaceId))).limit(1);
+  if (!existing) throw new Error('Not found');
+  const bytes = await renderStoredDeal(workspaceId, id);
+  const name = `${existing.title.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 80) || 'Document'}.pdf`;
+  const stored = await putPrivateMedia({ workspaceId, buffer: bytes, mimeType: 'application/pdf', filename: name, optimize: 'outgoing' });
+  await db.update(dealDocuments).set({ fileKey: stored.objectKey, fileName: name, fileSize: stored.sizeBytes, updatedAt: new Date() }).where(eq(dealDocuments.id, id));
+  if (existing.fileKey) await deletePrivateMedia(existing.fileKey).catch(() => undefined);
+}
+
+// The PDF as it would look with the form as it is now, without saving anything.
+export async function previewDeal(workspaceId: string, input: DealInput) {
+  await assertParties(workspaceId, input);
+  const [client] = input.clientId ? await db.select().from(clients).where(and(eq(clients.id, input.clientId), eq(clients.workspaceId, workspaceId))).limit(1) : [];
+  const [lead] = input.leadId ? await db.select().from(leads).where(and(eq(leads.id, input.leadId), eq(leads.workspaceId, workspaceId))).limit(1) : [];
+  return renderDealPdf({
+    kind: input.kind,
+    title: input.title,
+    reference: input.reference,
+    issuedOn: input.issuedOn ? atIst(input.issuedOn) : null,
+    durationDays: input.durationDays ?? null,
+    baseMinor: toPaise(input.baseRupees),
+    gstRatePct: input.gstRatePct,
+    brief: input.brief,
+    party: {
+      name: client?.company || client?.name || lead?.company || lead?.name || 'Client',
+      lines: [client?.notes, client?.city, client?.phone, client?.email, lead?.city, lead?.phone].filter((v, i, a): v is string => Boolean(v) && a.indexOf(v) === i),
+    },
+    milestones: input.milestones.map((m) => ({ title: m.title, trigger: m.trigger, baseMinor: toPaise(m.amountRupees) })),
+    blocks: (input.content ?? []) as Block[],
+  });
+}
+
 export async function deleteDeal(workspaceId: string, id: string) {
+  if (await isDocumentLocked(id)) throw new Error(LOCKED_NOTE);
   const [existing] = await db.select().from(dealDocuments).where(and(eq(dealDocuments.id, id), eq(dealDocuments.workspaceId, workspaceId))).limit(1);
   if (!existing) throw new Error('Not found');
   const [project] = await db.select({ id: projects.id }).from(projects).where(eq(projects.agreementId, id)).limit(1);
@@ -185,6 +236,8 @@ export async function getDeal(workspaceId: string, id: string) {
     signedOn: ymd(doc.signedOn),
     durationDays: doc.durationDays,
     brief: doc.brief,
+    reviewNote: doc.reviewNote,
+    content: doc.content ?? null,
     fileName: doc.fileName,
     fileSize: doc.fileSize,
     hasFile: Boolean(doc.fileKey),

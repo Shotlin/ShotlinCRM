@@ -442,7 +442,7 @@ export function GstInvoiceEditorPage() {
       hints.push(`Line items add up to ${formatMoney(billable)} but should be ${formatMoney(expected)}.`);
     }
     return { totals, supplyType, billable, expected, hints, placeOfSupply, rate };
-  }, [form]);
+  }, [form, loaded?.invoice.series]);
 
   const defaultTreatment = defaultGstTreatment(summary.supplyType, summary.placeOfSupply || 'the place of supply', summary.rate);
 

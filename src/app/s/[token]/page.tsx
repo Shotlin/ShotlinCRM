@@ -1,7 +1,9 @@
 import { headers } from 'next/headers';
 import type { Metadata } from 'next';
 import { rateLimit } from '@/server/http/rate-limit';
+import { loadSigningView } from '@/server/services/deals/signing';
 import { loadPublicInvoice, loadPublicProject, resolveShare } from '@/server/services/share/store';
+import { SignForm } from './SignForm';
 
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'Project update', robots: { index: false, follow: false, nocache: true } };
@@ -29,6 +31,15 @@ export default async function SharedProject({ params }: { params: Promise<{ toke
   const ip = (await headers()).get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
   if (!(await rateLimit(`share-page:${ip}`, 60, 60))) return <Unavailable message="Too many requests. Try again in a minute." />;
   const link = await resolveShare(token, true);
+  if (link && link.kind === 'agreement') {
+    const view = await loadSigningView(link.workspaceId, link.targetId);
+    if (!view || !view.hasFile) return <Unavailable message="This link is no longer available." />;
+    return (
+      <main className="sh-page">
+        <SignForm token={token} view={view} />
+      </main>
+    );
+  }
   if (link && link.kind === 'invoice') {
     const invoice = await loadPublicInvoice(link.workspaceId, link.targetId);
     if (!invoice) return <Unavailable message="This link is no longer available." />;

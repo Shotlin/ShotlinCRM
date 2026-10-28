@@ -164,3 +164,25 @@
 .section-card .table-wrap { margin: 0 -20px -20px; width: calc(100% + 40px); border-top: 1px solid var(--line); }
 .section-card .table-wrap .data-table th:first-child, .section-card .table-wrap .data-table td:first-child { padding-left: 20px; }
 .section-card .table-wrap .data-table th:last-child, .section-card .table-wrap .data-table td:last-child { padding-right: 20px; }
+
+.bk-locked { opacity: 0.72; }
+.bk-locked input, .bk-locked select, .bk-locked textarea { background: var(--soft); }
+
+/* ---- writing a document in the CRM */
+.bk-mode { display: inline-flex; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: 7px; background: var(--soft); margin-bottom: 14px; }
+.bk-mode button { border: 0; padding: 7px 14px; border-radius: 5px; background: transparent; color: var(--muted); font-size: 11px; font-weight: 500; cursor: pointer; }
+.bk-mode button.on { background: #fff; color: var(--ink); font-weight: 590; box-shadow: 0 1px 3px rgba(20, 21, 18, 0.12); }
+.bk-blocks { display: flex; flex-direction: column; gap: 10px; }
+.bk-block-row { padding: 10px 12px; border: 1px solid var(--line); border-radius: 7px; background: #fff; }
+.bk-block-h1 { border-left: 3px solid var(--violet); }
+.bk-block-h2 { border-left: 3px solid var(--line-strong); }
+.bk-block-pagebreak { background: var(--soft); border-style: dashed; }
+.bk-block-head { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
+.bk-block-head select { width: auto; height: 30px; border: 1px solid var(--line-strong); border-radius: 6px; padding: 0 24px 0 8px; font-size: 10.5px; background: #fff; }
+.bk-block-row textarea { width: 100%; border: 1px solid var(--line-strong); border-radius: 6px; padding: 9px 10px; font: inherit; font-size: 11.5px; line-height: 1.55; resize: vertical; background: #fff; }
+.bk-block-row textarea:focus { border-color: var(--ink); outline: 0; box-shadow: 0 0 0 3px rgba(21, 22, 19, 0.06); }
+.bk-block-title { font-weight: 600; }
+.bk-block-add { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding-top: 4px; }
+.bk-block-add .bk-sub { display: inline-flex; align-items: center; gap: 3px; margin-right: 4px; }
+
+.bk-row-top { margin: 0 0 14px; }

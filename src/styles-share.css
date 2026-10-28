@@ -37,3 +37,20 @@ body:has(.sh-page) { background: #f6f5fb; }
 .sh-totals div { display: flex; justify-content: space-between; gap: 10px; padding: 8px 2px; border-bottom: 1px solid #e6e3f5; font-size: 14px; }
 .sh-totals dt, .sh-totals dd { margin: 0; }
 .sh-grand { font-weight: 700; font-size: 16px !important; }
+
+.sh-frame { width: 100%; height: 560px; border: 1px solid #e6e3f5; border-radius: 10px; background: #fff; margin-bottom: 12px; }
+.sh-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+.sh-fields label, .sh-label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #4a4860; font-weight: 600; }
+.sh-fields input, .sh-ask textarea { padding: 10px 12px; border: 1px solid #d8d5ea; border-radius: 9px; font: inherit; font-size: 15px; font-weight: 400; color: #1c1b2e; }
+.sh-label { margin: 0 0 6px; }
+.sh-pad { display: block; width: 100%; height: 190px; border: 1.5px dashed #b9b4d8; border-radius: 12px; background: #fcfcff; touch-action: none; cursor: crosshair; }
+.sh-row { display: flex; align-items: center; gap: 12px; margin: 10px 0 14px; }
+.sh-check { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; line-height: 1.5; margin-bottom: 14px; }
+.sh-check input { margin-top: 3px; width: 18px; height: 18px; }
+.sh-btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+.sh-error { padding: 10px 12px; border-radius: 9px; background: #fee9e7; color: #b42318; font-size: 14px; }
+.sh-ask { margin-top: 18px; padding-top: 14px; border-top: 1px solid #e6e3f5; }
+.sh-ask textarea { width: 100%; resize: vertical; }
+.sh-link { border: 0; background: none; padding: 0; color: #4a2bd8; font: inherit; font-size: 13.5px; text-decoration: underline; cursor: pointer; }
+.sh-done { border-color: #cfe9d9; background: #f4fbf7; }
+@media (max-width: 560px) { .sh-fields { grid-template-columns: 1fr; } .sh-frame { height: 420px; } }

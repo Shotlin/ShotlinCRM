@@ -25,6 +25,8 @@ const STATUS: Record<string, { label: string; tone: string }> = {
   sent: { label: 'Sent', tone: 'blue' },
   signed: { label: 'Signed', tone: 'green' },
   declined: { label: 'Declined', tone: 'red' },
+  client_signed: { label: 'Needs your approval', tone: 'amber' },
+  changes_requested: { label: 'Changes requested', tone: 'red' },
 };
 
 export function AgreementsPage() {

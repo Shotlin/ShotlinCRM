@@ -17,9 +17,8 @@ export const SUPPLIER = {
   footerLine: 'Shotlin | Habra, West Bengal, India | shotlin085@gmail.com | shotlin.com',
 } as const;
 
-// The signatory spelling differs between the templates ("Mandal") and the agreements
-// ("Mondal"), so it is configuration, not code. Set INVOICE_SIGNATORY once it is confirmed.
-export const signatoryName = () => process.env.INVOICE_SIGNATORY ?? 'Sayan Mandal';
+// The agreements and the proposal spell the signatory "Mondal". INVOICE_SIGNATORY overrides it.
+export const signatoryName = () => process.env.INVOICE_SIGNATORY ?? 'Sayan Mondal';
 
 // The signature image is private, so it lives outside the repository.
 export const signaturePath = () =>

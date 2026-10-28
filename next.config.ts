@@ -33,6 +33,11 @@ const nextConfig: NextConfig = {
           { key: 'Cache-Control', value: 'no-store' },
         ],
       },
+      {
+        // The agreement PDF is shown inside the signing page, from the same site only.
+        source: '/s/:token/agreement',
+        headers: [{ key: 'X-Frame-Options', value: 'SAMEORIGIN' }],
+      },
     ];
   },
 };

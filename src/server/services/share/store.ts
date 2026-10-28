@@ -1,7 +1,7 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { db } from '../../db/client';
-import { invoices, projectMilestones, projects, shareLinks } from '../../db/schema';
+import { dealDocuments, invoices, projectMilestones, projects, shareLinks } from '../../db/schema';
 import { getProjectDetail } from '../deals/store';
 import { documentHeading } from '../invoicing/calc';
 import { loadGstInvoice } from '../invoicing/issue';
@@ -10,12 +10,19 @@ const DAY = 86_400_000;
 const hash = (token: string) => createHash('sha256').update(token).digest('hex');
 
 // The secret is 32 random bytes. Only its hash is stored, so a database leak does not expose working links.
-export type ShareKind = 'project' | 'invoice';
+export type ShareKind = 'project' | 'invoice' | 'agreement';
 
 export async function createShareLink(workspaceId: string, kind: ShareKind, targetId: string, label: string, days: number) {
   if (kind === 'project') {
     const [project] = await db.select({ id: projects.id }).from(projects).where(and(eq(projects.id, targetId), eq(projects.workspaceId, workspaceId))).limit(1);
     if (!project) throw new Error('Project not found');
+  } else if (kind === 'agreement') {
+    const [doc] = await db.select({ status: dealDocuments.status, fileKey: dealDocuments.fileKey }).from(dealDocuments).where(and(eq(dealDocuments.id, targetId), eq(dealDocuments.workspaceId, workspaceId))).limit(1);
+    if (!doc) throw new Error('Document not found');
+    if (!doc.fileKey) throw new Error('Upload the PDF or write the document first, then send it for signature');
+    if (doc.status === 'client_signed' || doc.status === 'signed') throw new Error('This document is already signed');
+    // Sending it for signature moves a draft to "sent".
+    if (doc.status === 'draft') await db.update(dealDocuments).set({ status: 'sent', updatedAt: new Date() }).where(eq(dealDocuments.id, targetId));
   } else {
     const [invoice] = await db.select({ status: invoices.status, cancelledAt: invoices.cancelledAt, docType: invoices.docType }).from(invoices).where(and(eq(invoices.id, targetId), eq(invoices.workspaceId, workspaceId))).limit(1);
     if (!invoice || !invoice.docType) throw new Error('Invoice not found');

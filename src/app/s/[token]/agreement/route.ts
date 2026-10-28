@@ -18,9 +18,14 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
   const ip = (await headers()).get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
   if (!(await rateLimit(`share-file:${ip}`, 40, 60))) return new NextResponse('Too many requests.', { status: 429 });
   const link = await resolveShare(token);
-  if (!link || link.kind !== 'project') return gone();
-  const [project] = await db.select({ agreementId: projects.agreementId }).from(projects).where(eq(projects.id, link.targetId)).limit(1);
-  const file = project?.agreementId ? await getDealFileKey(link.workspaceId, project.agreementId) : null;
+  if (!link || (link.kind !== 'project' && link.kind !== 'agreement')) return gone();
+  let documentId: string | null = null;
+  if (link.kind === 'agreement') documentId = link.targetId;
+  else {
+    const [project] = await db.select({ agreementId: projects.agreementId }).from(projects).where(eq(projects.id, link.targetId)).limit(1);
+    documentId = project?.agreementId ?? null;
+  }
+  const file = documentId ? await getDealFileKey(link.workspaceId, documentId) : null;
   if (!file) return gone();
   try {
     const bytes = await getPrivateMedia(file.key);
@@ -29,6 +34,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
         'Content-Type': 'application/pdf',
         'Content-Length': String(bytes.length),
         'Content-Disposition': `inline; filename="${file.name.replace(/["\\]/g, '')}"`,
+        'X-Frame-Options': 'SAMEORIGIN',
         'Cache-Control': 'private, no-store',
         'X-Robots-Tag': 'noindex, nofollow',
       },

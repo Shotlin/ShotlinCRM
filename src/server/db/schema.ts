@@ -26,6 +26,10 @@ export const workspaces = pgTable('workspaces', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   reportingCurrency: text('reporting_currency').notNull().default('INR'),
+  // The company signature or seal stamped on countersigned agreements.
+  signatureKey: text('signature_key'),
+  signatoryName: text('signatory_name').notNull().default(''),
+  signatoryTitle: text('signatory_title').notNull().default(''),
   createdAt: createdAt(),
 });
 
@@ -742,6 +746,10 @@ export const dealDocuments = pgTable(
     // Target delivery length in days, counted from kickoff.
     durationDays: integer('duration_days'),
     brief: text('brief').notNull().default(''),
+    // A document written in the CRM: the blocks the PDF is made from. Null for an uploaded PDF.
+    content: jsonb('content').$type<{ id: string; type: 'h1' | 'h2' | 'p' | 'bullets' | 'numbered' | 'table' | 'pagebreak'; text: string }[] | null>(),
+    // What the client said when they asked for a change.
+    reviewNote: text('review_note').notNull().default(''),
     fileKey: text('file_key'),
     fileName: text('file_name'),
     fileSize: integer('file_size'),
@@ -811,4 +819,24 @@ export const invoiceRevisions = pgTable(
     createdAt: createdAt(),
   },
   (table) => [index('invoice_revisions_invoice_idx').on(table.invoiceId, table.revision)],
+);
+
+// Who signed a document, when and from where. The signature image itself is kept in R2.
+export const documentSignatures = pgTable(
+  'document_signatures',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+    documentId: text('document_id').notNull().references(() => dealDocuments.id, { onDelete: 'cascade' }),
+    role: text('role').notNull(),
+    signerName: text('signer_name').notNull(),
+    signerTitle: text('signer_title').notNull().default(''),
+    signatureKey: text('signature_key'),
+    // The SHA-256 of the PDF the signer was looking at when they signed.
+    documentSha256: text('document_sha256').notNull(),
+    ipAddress: text('ip_address').notNull().default(''),
+    userAgent: text('user_agent').notNull().default(''),
+    signedAt: timestamp('signed_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('document_signatures_doc_idx').on(table.documentId)],
 );
