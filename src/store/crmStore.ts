@@ -75,6 +75,7 @@ type CrmStore = CrmData & {
 
 const emptyData: CrmData = {
   leads: [],
+  chats: [],
   messages: [],
   clients: [],
   proposals: [],

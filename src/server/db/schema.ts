@@ -59,6 +59,8 @@ export const leads = pgTable(
     tags: jsonb('tags').$type<string[]>().notNull().default([]),
     clientId: text('client_id'),
     followUpAt: timestamp('follow_up_at', { withTimezone: true }),
+    // false = a plain WhatsApp chat; true = a lead worked in the pipeline.
+    inPipeline: boolean('in_pipeline').notNull().default(true),
     createdAt: createdAt(),
     lastActivityAt: timestamp('last_activity_at', { withTimezone: true }).notNull().defaultNow(),
   },

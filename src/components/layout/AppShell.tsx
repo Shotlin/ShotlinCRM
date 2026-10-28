@@ -15,7 +15,7 @@ import {
 import { signOut } from 'next-auth/react';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import { Link, NavLink } from '../../lib/router';
+import { Link, NavLink, usePathname } from '../../lib/router';
 import { Avatar } from '../ui/Avatar';
 import { useToast } from '../ui/Toast';
 
@@ -42,6 +42,8 @@ export function AppShell({
 }) {
   const { notify } = useToast();
   const [resetting, setResetting] = useState(false);
+  // The inbox is a full-screen chat app, so the shell shrinks to a slim icon rail.
+  const chatMode = usePathname().startsWith('/inbox');
 
   const resetData = async () => {
     if (!window.confirm('Replace all workspace records with the demo data? This cannot be undone.')) {
@@ -59,7 +61,7 @@ export function AppShell({
   };
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${chatMode ? ' app-shell--chat' : ''}`}>
       <aside className="sidebar">
         <div className="brand">
           <span className="brand-mark" aria-hidden="true">S</span>

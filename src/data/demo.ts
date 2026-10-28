@@ -4,6 +4,7 @@ export const DEMO_NOW = new Date('2026-10-27T11:24:00');
 export const DEMO_TODAY_ISO = '2026-10-27';
 
 export const DEMO_DATA: CrmData = {
+  chats: [],
   leads: [
     {
       id: 'lead-1',

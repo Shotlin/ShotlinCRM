@@ -101,11 +101,12 @@ export async function sendManualMessage(input: SendMessageInput) {
 
   const messageId = randomUUID();
   await db.transaction(async (tx) => {
-    const conversationId = `conversation-${lead.id}`;
-    await tx
+    // An existing conversation keeps its own id (chats created by WhatsApp use random ids),
+    // so read the id back instead of assuming it.
+    const [conversation] = await tx
       .insert(conversations)
       .values({
-        id: conversationId,
+        id: `conversation-${lead.id}`,
         workspaceId: input.workspaceId,
         leadId: lead.id,
         lastMessageAt: new Date(),
@@ -113,7 +114,9 @@ export async function sendManualMessage(input: SendMessageInput) {
       .onConflictDoUpdate({
         target: [conversations.workspaceId, conversations.leadId],
         set: { lastMessageAt: new Date(), updatedAt: new Date() },
-      });
+      })
+      .returning({ id: conversations.id });
+    const conversationId = conversation.id;
 
     await tx.insert(messages).values({
       id: messageId,

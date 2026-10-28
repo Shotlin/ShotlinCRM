@@ -14,6 +14,7 @@ import { db } from '../../db/client';
 import {
   calendarEvents,
   clients,
+  conversations,
   invoiceItems,
   invoices,
   leadNotes,
@@ -47,6 +48,7 @@ export async function loadCrmSnapshot(workspaceId: string): Promise<CrmSnapshot>
     noteRows,
     eventRows,
     workspaceRows,
+    conversationRows,
   ] = await Promise.all([
     db.select().from(leads).where(eq(leads.workspaceId, workspaceId)).orderBy(desc(leads.createdAt)),
     db.select().from(clients).where(eq(clients.workspaceId, workspaceId)).orderBy(desc(clients.createdAt)),
@@ -70,7 +72,12 @@ export async function loadCrmSnapshot(workspaceId: string): Promise<CrmSnapshot>
     db.select().from(leadNotes).where(eq(leadNotes.workspaceId, workspaceId)).orderBy(desc(leadNotes.createdAt)),
     db.select().from(calendarEvents).where(eq(calendarEvents.workspaceId, workspaceId)).orderBy(asc(calendarEvents.startsAt)),
     db.select().from(workspaces).where(eq(workspaces.id, workspaceId)).limit(1),
+    db
+      .select({ leadId: conversations.leadId, unreadCount: conversations.unreadCount })
+      .from(conversations)
+      .where(eq(conversations.workspaceId, workspaceId)),
   ]);
+  const unreadByLead = new Map(conversationRows.map((row) => [row.leadId, row.unreadCount]));
 
   const proposalItemsByProposal = new Map<string, Proposal['lineItems']>();
   for (const { item } of proposalItemRows) {
@@ -102,30 +109,32 @@ export async function loadCrmSnapshot(workspaceId: string): Promise<CrmSnapshot>
     if (media.messageId && media.state === 'ready') mediaByMessage.set(media.messageId, media);
   }
 
+  const toLead = (lead: (typeof leadRows)[number]): Lead => ({
+    id: lead.id,
+    name: lead.name,
+    company: lead.company,
+    phone: lead.phone,
+    email: lead.email,
+    city: lead.city,
+    source: lead.source as Lead['source'],
+    initialMessage: lead.initialMessage,
+    status: lead.status as Lead['status'],
+    valueMinor: lead.valueMinor,
+    currency: lead.currency as Lead['currency'],
+    ownerInitials: lead.ownerInitials,
+    createdAt: lead.createdAt.toISOString(),
+    lastActivityAt: lead.lastActivityAt.toISOString(),
+    followUpAt: iso(lead.followUpAt) ?? undefined,
+    clientId: lead.clientId ?? undefined,
+    tags: lead.tags,
+    unread: unreadByLead.get(lead.id) ?? 0,
+  });
+
   return {
     workspaceName: workspace?.name ?? 'Workspace',
     reportingCurrency: (workspace?.reportingCurrency ?? 'INR') as CrmSnapshot['reportingCurrency'],
-    leads: leadRows.map(
-      (lead): Lead => ({
-        id: lead.id,
-        name: lead.name,
-        company: lead.company,
-        phone: lead.phone,
-        email: lead.email,
-        city: lead.city,
-        source: lead.source as Lead['source'],
-        initialMessage: lead.initialMessage,
-        status: lead.status as Lead['status'],
-        valueMinor: lead.valueMinor,
-        currency: lead.currency as Lead['currency'],
-        ownerInitials: lead.ownerInitials,
-        createdAt: lead.createdAt.toISOString(),
-        lastActivityAt: lead.lastActivityAt.toISOString(),
-        followUpAt: iso(lead.followUpAt) ?? undefined,
-        clientId: lead.clientId ?? undefined,
-        tags: lead.tags,
-      }),
-    ),
+    leads: leadRows.filter((lead) => lead.inPipeline).map(toLead),
+    chats: leadRows.filter((lead) => !lead.inPipeline).map(toLead),
     clients: clientRows.map(
       (client): Client => ({
         id: client.id,

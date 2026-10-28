@@ -13,7 +13,8 @@ export type NormalizedMessage = {
   filename?: string;
 };
 
-export function normalizeWhatsAppMessage(raw: WAMessage): NormalizedMessage | null {
+// `phoneJid` is the phone-number JID for chats addressed by an opaque "@lid" id.
+export function normalizeWhatsAppMessage(raw: WAMessage, phoneJid?: string): NormalizedMessage | null {
   const remoteJid = raw.key.remoteJid;
   if (!remoteJid || remoteJid === 'status@broadcast' || remoteJid.endsWith('@g.us')) return null;
 
@@ -49,7 +50,9 @@ export function normalizeWhatsAppMessage(raw: WAMessage): NormalizedMessage | nu
     return null;
   }
 
-  const digits = remoteJid.split('@')[0]?.split(':')[0]?.replace(/\D/g, '') ?? '';
+  const addressJid = phoneJid ?? remoteJid;
+  if (addressJid.endsWith('@lid')) return null;
+  const digits = addressJid.split('@')[0]?.split(':')[0]?.replace(/\D/g, '') ?? '';
   if (!digits) return null;
   const timestamp = Number(raw.messageTimestamp ?? 0);
 

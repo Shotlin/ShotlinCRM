@@ -3,6 +3,7 @@ import makeWASocket, {
   downloadMediaMessage,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
+  type Contact,
   type WASocket,
   type WAMessage,
 } from '@whiskeysockets/baileys';
@@ -12,7 +13,7 @@ import pino from 'pino';
 import { db } from '../../server/db/client';
 import { whatsappConnections } from '../../server/db/schema';
 import { encryptSecret } from '../../server/security/envelope';
-import { ingestInboundMessage } from '../../server/services/conversations/ingest';
+import { applyContactNames, ingestInboundMessage } from '../../server/services/conversations/ingest';
 import { publishChange } from '../../server/realtime';
 import { putPrivateMedia } from '../../server/storage';
 import { messages } from '../../server/db/schema';
@@ -79,10 +80,11 @@ export class WhatsAppManager {
       },
       printQRInTerminal: false,
       generateHighQualityLinkPreview: false,
-      syncFullHistory: false,
+      // A "Desktop" companion asks the phone for older chats while pairing.
+      syncFullHistory: true,
       markOnlineOnConnect: false,
       logger,
-      browser: ['Shotlin CRM', 'Chrome', '1.0.0'],
+      browser: ['Shotlin CRM', 'Desktop', '1.0.0'],
     });
 
     const active: ActiveConnection = {
@@ -103,11 +105,30 @@ export class WhatsAppManager {
     socket.ev.on('messages.upsert', ({ messages: incoming, type }) => {
       if (type !== 'notify') return;
       for (const raw of incoming) {
-        void this.handleIncomingMessage(connection, socket, raw).catch((error) =>
-          logger.error({ error }, 'Failed to ingest WhatsApp message'),
-        );
+        const ingest = () =>
+          this.enqueue(() => this.handleIncomingMessage(connection, socket, raw)).catch((error) =>
+            logger.error({ error }, 'Failed to ingest WhatsApp message'),
+          );
+        // Messages typed on the phone: give a CRM-sent message's job time to store its id first.
+        if (raw.key.fromMe) setTimeout(() => void ingest(), 2_500);
+        else void ingest();
       }
     });
+
+    socket.ev.on('messaging-history.set', ({ messages: history, contacts }) => {
+      void this.enqueue(async () => {
+        await this.handleHistory(connection, socket, history);
+        await this.handleContacts(connection, socket, contacts);
+      }).catch((error) => logger.error({ error }, 'Failed to import WhatsApp history'));
+    });
+
+    const onContacts = (contacts: Partial<Contact>[]) => {
+      void this.enqueue(() => this.handleContacts(connection, socket, contacts)).catch((error) =>
+        logger.error({ error }, 'Failed to apply WhatsApp contact names'),
+      );
+    };
+    socket.ev.on('contacts.upsert', onContacts);
+    socket.ev.on('contacts.update', onContacts);
 
     socket.ev.on('messages.update', (updates) => {
       void this.handleMessageUpdates(connection, updates);
@@ -182,13 +203,85 @@ export class WhatsAppManager {
     }
   }
 
-  private async handleIncomingMessage(connection: ConnectionRecord, socket: WASocket, raw: WAMessage) {
-    if (raw.key.fromMe) return;
-    const normalized = normalizeWhatsAppMessage(raw);
-    if (!normalized) return;
+  // One ingest at a time keeps message order and stops two messages from a new
+  // contact creating two leads.
+  private ingestQueue: Promise<unknown> = Promise.resolve();
+
+  private enqueue<T>(job: () => Promise<T>): Promise<T> {
+    const next = this.ingestQueue.then(job, job);
+    this.ingestQueue = next.catch(() => undefined);
+    return next;
+  }
+
+  // Chats can be addressed by an opaque "@lid" id; the CRM needs the phone number.
+  private async resolvePhoneJid(socket: WASocket, raw: WAMessage): Promise<string | undefined> {
+    const jid = raw.key.remoteJid;
+    if (!jid || !jid.endsWith('@lid')) return jid ?? undefined;
+    const alt = raw.key.remoteJidAlt;
+    if (alt?.endsWith('@s.whatsapp.net')) return alt;
+    const pn = await socket.signalRepository.lidMapping.getPNForLID(jid).catch(() => null);
+    return pn ? (pn.includes('@') ? pn : `${pn}@s.whatsapp.net`) : undefined;
+  }
+
+  // Saved address-book names and profile names replace the bare phone numbers.
+  private async handleContacts(
+    connection: ConnectionRecord,
+    socket: WASocket,
+    contacts: Partial<Contact>[] | undefined,
+  ) {
+    if (!contacts?.length) return;
+    const entries: { phone: string; name: string; saved: boolean }[] = [];
+    for (const contact of contacts) {
+      const name = contact.name || contact.verifiedName || contact.notify;
+      if (!contact.id || !name || contact.id.endsWith('@g.us') || contact.id === 'status@broadcast') continue;
+      let phoneJid = contact.id.endsWith('@s.whatsapp.net') ? contact.id : contact.phoneNumber;
+      if (!phoneJid && contact.id.endsWith('@lid')) {
+        phoneJid =
+          (await socket.signalRepository.lidMapping.getPNForLID(contact.id).catch(() => null)) ?? undefined;
+      }
+      const digits = phoneJid?.split('@')[0]?.split(':')[0]?.replace(/\D/g, '');
+      if (digits) entries.push({ phone: digits, name, saved: Boolean(contact.name) });
+    }
+    const updated = await applyContactNames(connection.workspaceId, entries);
+    if (updated) logger.warn({ received: contacts.length, named: updated }, 'WhatsApp contact names applied');
+  }
+
+  private async handleHistory(connection: ConnectionRecord, socket: WASocket, history: WAMessage[]) {
+    const days = Number(process.env.WHATSAPP_HISTORY_DAYS ?? 90);
+    const cutoff = Date.now() - days * 86_400_000;
+    const seconds = (raw: WAMessage) => Number(raw.messageTimestamp ?? 0);
+    const recent = history
+      .filter((raw) => seconds(raw) * 1000 >= cutoff)
+      .sort((a, b) => seconds(a) - seconds(b));
+    let stored = 0;
+    for (const raw of recent) {
+      try {
+        if (await this.handleIncomingMessage(connection, socket, raw, true)) stored += 1;
+      } catch (error) {
+        logger.warn({ error }, 'Skipped a history message that could not be stored');
+      }
+    }
+    logger.warn({ received: history.length, inWindow: recent.length, stored }, 'WhatsApp history imported');
+    await publishChange(connection.workspaceId, 'history.synced');
+  }
+
+  private async handleIncomingMessage(
+    connection: ConnectionRecord,
+    socket: WASocket,
+    raw: WAMessage,
+    historical = false,
+  ): Promise<boolean> {
+    const phoneJid = await this.resolvePhoneJid(socket, raw);
+    const normalized = normalizeWhatsAppMessage(raw, phoneJid);
+    if (!normalized) {
+      if (raw.message && raw.key.remoteJid?.endsWith('@lid') && !phoneJid) {
+        logger.warn('Skipped a message from a contact whose phone number is not known yet');
+      }
+      return false;
+    }
 
     let storedMedia;
-    if (normalized.mimeType && normalized.kind !== 'text') {
+    if (!historical && normalized.mimeType && normalized.kind !== 'text') {
       try {
         const buffer = await downloadMediaMessage(raw, 'buffer', {}, {
           logger,
@@ -205,7 +298,7 @@ export class WhatsAppManager {
       }
     }
 
-    await ingestInboundMessage({
+    const result = await ingestInboundMessage({
       workspaceId: connection.workspaceId,
       providerMessageId: normalized.providerMessageId,
       remoteJid: normalized.remoteJid,
@@ -213,9 +306,13 @@ export class WhatsAppManager {
       pushName: normalized.pushName,
       sentAt: normalized.sentAt,
       kind: normalized.kind,
-      body: normalized.body,
+      // History is imported as text only; media is not re-downloaded.
+      body: historical && normalized.kind !== 'text' && !normalized.body ? `[${normalized.kind}]` : normalized.body,
       media: storedMedia ? { ...storedMedia, filename: normalized.filename } : undefined,
+      direction: normalized.fromMe ? 'outbound' : 'inbound',
+      historical,
     });
+    return !result.duplicate;
   }
 
   private async handleMessageUpdates(

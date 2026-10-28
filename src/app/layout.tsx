@@ -4,6 +4,7 @@ import '../styles.css';
 import '../styles-settings.css';
 import '../styles-meta.css';
 import '../styles-ai.css';
+import '../styles-inbox.css';
 
 export const metadata: Metadata = {
   title: 'Shotlin CRM',

@@ -5,6 +5,13 @@ const nextConfig: NextConfig = {
   devIndicators: false,
   poweredByHeader: false,
   serverExternalPackages: ['@whiskeysockets/baileys', '@node-rs/argon2', 'pg'],
+  // Frontend-only deployments (e.g. Vercel) set BACKEND_ORIGIN so the browser
+  // keeps calling same-origin /api/* while the API runs on the backend server.
+  async rewrites() {
+    const backend = process.env.BACKEND_ORIGIN?.replace(/\/$/, '');
+    if (!backend) return [];
+    return [{ source: '/api/:path*', destination: `${backend}/api/:path*` }];
+  },
   async headers() {
     return [
       {

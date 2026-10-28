@@ -41,6 +41,8 @@ export type Lead = {
   followUpAt?: string;
   clientId?: string;
   tags: string[];
+  // Unread WhatsApp messages in this chat.
+  unread?: number;
 };
 
 export type Message = {
@@ -133,6 +135,8 @@ export type CalendarEvent = {
 
 export type CrmData = {
   leads: Lead[];
+  // WhatsApp chats that are not in the pipeline (same shape as a lead).
+  chats: Lead[];
   messages: Message[];
   clients: Client[];
   proposals: Proposal[];

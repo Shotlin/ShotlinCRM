@@ -50,9 +50,40 @@ export async function ingestMetaLead(workspaceId: string, leadgenId: string) {
     const createdAt = payload.created_time ? new Date(payload.created_time) : new Date();
     const phone = mapped.phone ? `+${normalizePhone(mapped.phone)}` : '';
     const messageId = randomUUID();
-    const leadId = randomUUID();
+    let leadId: string = randomUUID();
+    let conversationId = `conversation-${leadId}`;
+    let existingConversation = false;
+    let reuseChat = false;
+    if (phone) {
+      // The same number may already be a plain WhatsApp chat: promote it instead of
+      // creating a second thread for the same person.
+      const [chat] = await tx
+        .select({ id: leads.id })
+        .from(leads)
+        .where(
+          and(
+            eq(leads.workspaceId, workspaceId),
+            eq(leads.inPipeline, false),
+            sql`regexp_replace(${leads.phone}, '[^0-9]', '', 'g') = ${normalizePhone(phone)}`,
+          ),
+        )
+        .limit(1);
+      if (chat) {
+        leadId = chat.id;
+        reuseChat = true;
+        const [conversation] = await tx
+          .select({ id: conversations.id })
+          .from(conversations)
+          .where(and(eq(conversations.workspaceId, workspaceId), eq(conversations.leadId, leadId)))
+          .limit(1);
+        if (conversation) {
+          conversationId = conversation.id;
+          existingConversation = true;
+        }
+      }
+    }
 
-    await tx.insert(leads).values({
+    const leadValues = {
       id: leadId,
       workspaceId,
       name: mapped.name,
@@ -71,7 +102,19 @@ export async function ingestMetaLead(workspaceId: string, leadgenId: string) {
       ),
       createdAt,
       lastActivityAt: createdAt,
-    });
+    };
+    if (reuseChat) {
+      const patch: Partial<typeof leadValues> = { ...leadValues };
+      delete patch.id;
+      delete patch.workspaceId;
+      delete patch.createdAt;
+      await tx
+        .update(leads)
+        .set({ ...patch, inPipeline: true })
+        .where(and(eq(leads.id, leadId), eq(leads.workspaceId, workspaceId)));
+    } else {
+      await tx.insert(leads).values(leadValues);
+    }
 
     await tx.insert(leadAttributions).values({
       id: randomUUID(),
@@ -80,15 +123,26 @@ export async function ingestMetaLead(workspaceId: string, leadgenId: string) {
       ...attribution,
     });
 
-    const conversationId = `conversation-${leadId}`;
-    await tx.insert(conversations).values({
-      id: conversationId,
-      workspaceId,
-      leadId,
-      lastMessageAt: createdAt,
-      lastInboundAt: createdAt,
-      unreadCount: 1,
-    });
+    if (existingConversation) {
+      await tx
+        .update(conversations)
+        .set({
+          lastMessageAt: createdAt,
+          lastInboundAt: createdAt,
+          unreadCount: sql`${conversations.unreadCount} + 1`,
+          updatedAt: createdAt,
+        })
+        .where(eq(conversations.id, conversationId));
+    } else {
+      await tx.insert(conversations).values({
+        id: conversationId,
+        workspaceId,
+        leadId,
+        lastMessageAt: createdAt,
+        lastInboundAt: createdAt,
+        unreadCount: 1,
+      });
+    }
     await tx.insert(messages).values({
       id: messageId,
       workspaceId,
