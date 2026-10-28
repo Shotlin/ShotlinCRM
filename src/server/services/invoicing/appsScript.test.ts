@@ -54,7 +54,13 @@ describe('selfTest and header protection', () => {
     const res = h.call({ action: 'selfTest' });
     expect(res.ok).toBe(true);
     expect(res.result.sheets).toEqual({ GST_Series: 'ok', GST_Pending: 'ok', Pay_Ledger: 'ok' });
-    expect(res.result.folders.invoiceRoot).toBe('01 - GST Invoice PDFs');
+    expect(res.result.workbook).toBe('Shotlin GST Master - CRM TEST');
+    expect(res.result.folders).toEqual({
+      invoiceRoot: '01 - GST Invoice PDFs',
+      pending: '00 - Pending GST Invoices',
+      dataRoom: 'Shotlin GST Master - CRM TEST',
+      consistent: 'ok',
+    });
     expect(h.ledger.cell('N5')).toBe('CRM Payment ID');
   });
 
@@ -65,6 +71,29 @@ describe('selfTest and header protection', () => {
     expect(res.ok).toBe(false);
     expect(res.error).toMatch(/column F should be "Doc No" but is "Document Number"/);
     expect(h.series.cell('F7')).toBeUndefined();
+  });
+
+  it('has no built-in folder or sheet, so nothing can be written until each is set on purpose', () => {
+    const noSheet = createHarness({ sheetId: null });
+    const res = noSheet.call({ action: 'upsertRow', ...seriesRow() });
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/SHEET_ID script property is not set/);
+
+    const noRoot = createHarness({ rootId: null });
+    expect(noRoot.call({ action: 'saveFiles', destination: 'quarter', quarterFolderName: 'Q1 (Apr-Jun 2026)', files: files() }).error).toMatch(
+      /INVOICE_ROOT_ID script property is not set/,
+    );
+    const noPending = createHarness({ pendingId: null });
+    expect(noPending.call({ action: 'saveFiles', destination: 'pending', files: files() }).error).toMatch(
+      /PENDING_FOLDER_ID script property is not set/,
+    );
+    expect(noPending.drive.live(noPending.pendingFolder())).toHaveLength(0);
+    for (const h of [noSheet, noRoot, noPending]) expect(h.call({ action: 'selfTest' }).ok).toBe(false);
+  });
+
+  it('refuses a Pending folder that belongs to a different copy of the data room', () => {
+    const h = createHarness({ pendingId: 'other-copy-pending' });
+    expect(h.call({ action: 'selfTest' }).error).toMatch(/Pending folder is not inside the invoice folder/);
   });
 
   it('refuses an unexpected heading in the ledger key column', () => {
@@ -242,9 +271,9 @@ describe('saveFiles', () => {
     const h = createHarness();
     h.call({ action: 'saveFiles', destination: 'quarter', quarterFolderName: 'Q4 (Jan-Mar 2027)', files: files('a') });
     h.call({ action: 'saveFiles', destination: 'quarter', quarterFolderName: 'Q4 (Jan-Mar 2027)', files: files('b') });
-    const folders = h.rootFolder().folders;
-    expect(folders.map((folder) => folder.name)).toEqual(['Q4 (Jan-Mar 2027)']);
-    expect(h.drive.live(folders[0])).toHaveLength(4);
+    const quarters = h.rootFolder().folders.filter((folder) => folder.name.startsWith('Q'));
+    expect(quarters.map((folder) => folder.name)).toEqual(['Q4 (Jan-Mar 2027)']);
+    expect(h.drive.live(quarters[0])).toHaveLength(4);
   });
 
   it('moves an invoice out of Pending by trashing the earlier copies', () => {
@@ -253,7 +282,8 @@ describe('saveFiles', () => {
     const ids = pending.result.files.map((file: { id: string }) => file.id);
     h.call({ action: 'saveFiles', destination: 'quarter', quarterFolderName: 'Q3 (Oct-Dec 2026)', files: files(), replaceIds: ids });
     expect(h.drive.live(h.pendingFolder())).toHaveLength(0);
-    expect(h.drive.live(h.rootFolder().folders[0])).toHaveLength(2);
+    const quarter = h.rootFolder().folders.find((folder) => folder.name === 'Q3 (Oct-Dec 2026)')!;
+    expect(h.drive.live(quarter)).toHaveLength(2);
     ids.forEach((id: string) => expect(h.drive.fileById.get(id)!.trashed).toBe(true));
   });
 

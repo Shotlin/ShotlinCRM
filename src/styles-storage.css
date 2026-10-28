@@ -1,0 +1,112 @@
+/* Storage warnings. */
+
+.storage-banner {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 9px 20px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.storage-banner span {
+  flex: 1 1 320px;
+}
+
+.storage-banner a,
+.storage-banner button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.storage-banner-warn {
+  background: var(--amber-bg);
+  color: var(--amber);
+}
+
+.storage-banner-critical {
+  background: var(--red-bg);
+  color: var(--red);
+}
+
+.storage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.storage-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+}
+
+.storage-card h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.storage-card p {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.storage-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.storage-chip {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--green-bg);
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.storage-chip-warn {
+  background: var(--amber-bg);
+  color: var(--amber);
+}
+
+.storage-chip-critical {
+  background: var(--red-bg);
+  color: var(--red);
+}
+
+.storage-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--soft-strong);
+  overflow: hidden;
+}
+
+.storage-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--green);
+}
+
+.storage-card-warn .storage-bar span {
+  background: #c8921c;
+}
+
+.storage-card-critical .storage-bar span {
+  background: var(--red);
+}

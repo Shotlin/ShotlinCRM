@@ -15,15 +15,20 @@
  * Setup is described in SETUP.md next to this file.
  */
 
-var CONFIG = {
-  // "01 - GST Invoice PDFs" (quarter folders live inside it)
-  INVOICE_ROOT_ID: '1DCSCEo3kgnetB481G4G_XCLg4YaScRDx',
-  // "00 - Pending GST Invoices"
-  PENDING_FOLDER_ID: '1bO7LQBh-HLbdJf0r9A8wjUnET0X5rVYv',
-};
+// Everything that says WHERE to write lives in Script Properties, never in this file, and has no
+// default. That way a test copy and the real data room can never be mixed up by accident:
+//   TOKEN              the shared secret
+//   SHEET_ID           the Google Sheet (the master workbook)
+//   INVOICE_ROOT_ID    the folder "01 - GST Invoice PDFs" (quarter folders live inside it)
+//   PENDING_FOLDER_ID  the folder "00 - Pending GST Invoices"
+function prop_(name) {
+  var value = PropertiesService.getScriptProperties().getProperty(name);
+  if (!value) throw new Error('The ' + name + ' script property is not set.');
+  return value;
+}
 
 var SERIES_HEADERS = ['FY', 'Qtr (Period)', 'Month', 'Series', 'Serial', 'Doc No', 'Doc Date', 'Invoice Type', 'Client', 'Project', 'Place of Supply', 'Customer GSTIN', 'SAC', 'Supply Type', 'Tax Type', 'Tax Rate', 'Taxable Value', 'CGST', 'SGST', 'IGST', 'GST Total', 'Round Off', 'Invoice Value', 'Received', 'Balance', 'Payment Status', 'Return Status', 'Filing Qtr', 'Source PDF (Drive Link)', 'Notes', 'Dup Flag'];
-var PENDING_HEADERS = ['FY', 'Qtr (Period)', 'Month', 'Series', 'Serial', 'Reserved Doc No', 'Draft Date', 'Invoice Type', 'Client', 'Project', 'Place of Supply', 'Customer GSTIN', 'Taxable Value', 'GST Type', 'GST Amount', 'Gross Pending', 'Payment Status', 'Promotion Status', 'Drive Draft Link', 'Notes / Payment Promotion'];
+var PENDING_HEADERS = ['FY', 'Qtr (Period)', 'Month', 'Series', 'Serial', 'Reserved Doc No', 'Draft Date', 'Invoice Type', 'Client', 'Project', 'Place of Supply', 'Customer GSTIN', 'Taxable Value', 'GST Type', 'GST Amount', 'Gross Pending', 'Payment Status', 'Promotion Status', 'Drive Draft Link', 'Notes / Payment Promotion Checklist'];
 var LEDGER_HEADERS = ['Payment Date', 'Client', 'Project', 'Doc No', 'Payment Type', 'Taxable Base', 'GST', 'Gross Received', 'Payment Mode', 'Status', 'Quarter', 'Reference / UTR', 'Source File'];
 
 var MONEY = '"₹"#,##0.00';
@@ -103,9 +108,7 @@ function authorize_(token) {
 }
 
 function spreadsheet_() {
-  var id = PropertiesService.getScriptProperties().getProperty('SHEET_ID');
-  if (!id) throw new Error('The SHEET_ID script property is not set.');
-  return SpreadsheetApp.openById(id);
+  return SpreadsheetApp.openById(prop_('SHEET_ID'));
 }
 
 // ---------------------------------------------------------------- column helpers
@@ -155,13 +158,24 @@ function sheetFor_(name) {
 }
 
 function selfTest_() {
-  var report = { sheets: {}, folders: {} };
+  var report = { workbook: spreadsheet_().getName(), sheets: {}, folders: {} };
   Object.keys(SHEETS).forEach(function (name) {
     sheetFor_(name);
     report.sheets[name] = 'ok';
   });
-  report.folders.invoiceRoot = DriveApp.getFolderById(CONFIG.INVOICE_ROOT_ID).getName();
-  report.folders.pending = DriveApp.getFolderById(CONFIG.PENDING_FOLDER_ID).getName();
+  var root = DriveApp.getFolderById(prop_('INVOICE_ROOT_ID'));
+  var pending = DriveApp.getFolderById(prop_('PENDING_FOLDER_ID'));
+  report.folders.invoiceRoot = root.getName();
+  report.folders.pending = pending.getName();
+  // The names inside a test copy match the originals, so also show the data room they sit in.
+  var rootParents = root.getParents();
+  report.folders.dataRoom = rootParents.hasNext() ? rootParents.next().getName() : '(top level of My Drive)';
+  // The quarter folders and the Pending folder must belong to the same copy of the data room.
+  var inside = false;
+  var parents = pending.getParents();
+  while (parents.hasNext()) if (parents.next().getId() === root.getId()) inside = true;
+  if (!inside) throw new Error('The Pending folder is not inside the invoice folder. Check INVOICE_ROOT_ID and PENDING_FOLDER_ID belong to the same copy.');
+  report.folders.consistent = 'ok';
   return report;
 }
 
@@ -262,7 +276,7 @@ function upsertRow_(request) {
 // ---------------------------------------------------------------- Drive files
 
 function quarterFolder_(name) {
-  var root = DriveApp.getFolderById(CONFIG.INVOICE_ROOT_ID);
+  var root = DriveApp.getFolderById(prop_('INVOICE_ROOT_ID'));
   var matches = root.getFoldersByName(name);
   if (matches.hasNext()) return matches.next();
   return root.createFolder(name);
@@ -271,7 +285,7 @@ function quarterFolder_(name) {
 function saveFiles_(request) {
   if (!request.files || !request.files.length) throw new Error('No files were sent.');
   var folder = request.destination === 'pending'
-    ? DriveApp.getFolderById(CONFIG.PENDING_FOLDER_ID)
+    ? DriveApp.getFolderById(prop_('PENDING_FOLDER_ID'))
     : quarterFolder_(String(request.quarterFolderName || ''));
   if (request.destination !== 'pending' && !request.quarterFolderName) throw new Error('A quarter folder name is required.');
 

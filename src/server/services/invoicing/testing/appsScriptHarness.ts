@@ -10,7 +10,7 @@ export const INVOICE_ROOT_ID = '1DCSCEo3kgnetB481G4G_XCLg4YaScRDx';
 export const PENDING_FOLDER_ID = '1bO7LQBh-HLbdJf0r9A8wjUnET0X5rVYv';
 
 const SERIES_HEADERS = ['FY', 'Qtr (Period)', 'Month', 'Series', 'Serial', 'Doc No', 'Doc Date', 'Invoice Type', 'Client', 'Project', 'Place of Supply', 'Customer GSTIN', 'SAC', 'Supply Type', 'Tax Type', 'Tax Rate', 'Taxable Value', 'CGST', 'SGST', 'IGST', 'GST Total', 'Round Off', 'Invoice Value', 'Received', 'Balance', 'Payment Status', 'Return Status', 'Filing Qtr', 'Source PDF (Drive Link)', 'Notes', 'Dup Flag'];
-const PENDING_HEADERS = ['FY', 'Qtr (Period)', 'Month', 'Series', 'Serial', 'Reserved Doc No', 'Draft Date', 'Invoice Type', 'Client', 'Project', 'Place of Supply', 'Customer GSTIN', 'Taxable Value', 'GST Type', 'GST Amount', 'Gross Pending', 'Payment Status', 'Promotion Status', 'Drive Draft Link', 'Notes / Payment Promotion'];
+const PENDING_HEADERS = ['FY', 'Qtr (Period)', 'Month', 'Series', 'Serial', 'Reserved Doc No', 'Draft Date', 'Invoice Type', 'Client', 'Project', 'Place of Supply', 'Customer GSTIN', 'Taxable Value', 'GST Type', 'GST Amount', 'Gross Pending', 'Payment Status', 'Promotion Status', 'Drive Draft Link', 'Notes / Payment Promotion Checklist'];
 const LEDGER_HEADERS = ['Payment Date', 'Client', 'Project', 'Doc No', 'Payment Type', 'Taxable Base', 'GST', 'Gross Received', 'Payment Mode', 'Status', 'Quarter', 'Reference / UTR', 'Source File'];
 
 const letters = (index: number) => {
@@ -77,11 +77,14 @@ class FakeFolder {
   files: FakeFile[] = [];
   folders: FakeFolder[] = [];
   constructor(readonly id: string, public name: string, private readonly drive: FakeDrive) {}
+  parent: FakeFolder | null = null;
   getId = () => this.id;
   getName = () => this.name;
+  getParents = () => iterator(this.parent ? [this.parent] : []);
   getFoldersByName = (name: string) => iterator(this.folders.filter((folder) => folder.name === name));
   createFolder = (name: string) => {
     const folder = new FakeFolder(this.drive.nextId('folder'), name, this.drive);
+    folder.parent = this;
     this.folders.push(folder);
     this.drive.folderById.set(folder.id, folder);
     return folder;
@@ -106,12 +109,15 @@ class FakeDrive {
   private counter = 0;
   nextId = (kind: string) => `${kind}-${++this.counter}`;
   constructor() {
-    for (const [id, name] of [
-      [INVOICE_ROOT_ID, '01 - GST Invoice PDFs'],
-      [PENDING_FOLDER_ID, '00 - Pending GST Invoices'],
-    ]) {
-      this.folderById.set(id, new FolderFactory(this).make(id, name));
-    }
+    const root = new FolderFactory(this).make(INVOICE_ROOT_ID, '01 - GST Invoice PDFs');
+    const pending = new FolderFactory(this).make(PENDING_FOLDER_ID, '00 - Pending GST Invoices');
+    pending.parent = root;
+    root.folders.push(pending);
+    root.parent = new FolderFactory(this).make('data-room', 'Shotlin GST Master - CRM TEST');
+    this.folderById.set(root.id, root);
+    this.folderById.set(pending.id, pending);
+    // An unrelated folder, standing in for another copy of the data room.
+    this.folderById.set('other-copy-pending', new FolderFactory(this).make('other-copy-pending', '00 - Pending GST Invoices'));
   }
   live(folder: FakeFolder) {
     return folder.files.filter((file) => !file.trashed);
@@ -126,10 +132,14 @@ class FolderFactory {
 
 export type Harness = ReturnType<typeof createHarness>;
 
-export function createHarness(options: { token?: string | null; sheetId?: string | null } = {}) {
+export function createHarness(
+  options: { token?: string | null; sheetId?: string | null; rootId?: string | null; pendingId?: string | null } = {},
+) {
   const props: Record<string, string> = {};
   if (options.token !== null) props.TOKEN = options.token ?? TOKEN;
   if (options.sheetId !== null) props.SHEET_ID = options.sheetId ?? SHEET_ID;
+  if (options.rootId !== null) props.INVOICE_ROOT_ID = options.rootId ?? INVOICE_ROOT_ID;
+  if (options.pendingId !== null) props.PENDING_FOLDER_ID = options.pendingId ?? PENDING_FOLDER_ID;
 
   const series = new FakeSheet('GST_Series');
   series.setHeaders(6, SERIES_HEADERS);
@@ -187,7 +197,7 @@ export function createHarness(options: { token?: string | null; sheetId?: string
     SpreadsheetApp: {
       openById: (id: string) => {
         if (id !== SHEET_ID) throw new Error('Spreadsheet not found');
-        return { getSheetByName: (name: string) => sheets[name] ?? null };
+        return { getName: () => 'Shotlin GST Master - CRM TEST', getSheetByName: (name: string) => sheets[name] ?? null };
       },
       newRichTextValue: () => {
         const rich = { text: '', url: '' };

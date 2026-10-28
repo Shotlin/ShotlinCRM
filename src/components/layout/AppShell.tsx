@@ -4,6 +4,7 @@ import {
   CalendarDays,
   ChartNoAxesCombined,
   FileText,
+  HardDrive,
   LayoutDashboard,
   MessageSquareText,
   ReceiptText,
@@ -17,6 +18,7 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { Link, NavLink, usePathname } from '../../lib/router';
 import { Avatar } from '../ui/Avatar';
+import { StorageBanner } from './StorageBanner';
 import { useToast } from '../ui/Toast';
 
 const NAV_ITEMS = [
@@ -105,6 +107,9 @@ export function AppShell({
               <Link to="/settings/integrations" className="profile-action">
                 <Settings2 size={14} /> Integrations
               </Link>
+              <Link to="/settings/storage" className="profile-action">
+                <HardDrive size={14} /> Storage
+              </Link>
               <Link to="/settings/ai" className="profile-action">
                 <Sparkles size={14} /> AI settings
               </Link>
@@ -124,7 +129,10 @@ export function AppShell({
         </div>
       </aside>
 
-      <main className="main-canvas">{children}</main>
+      <main className="main-canvas">
+        {chatMode ? null : <StorageBanner />}
+        {children}
+      </main>
     </div>
   );
 }

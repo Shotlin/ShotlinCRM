@@ -22,6 +22,7 @@ const start = async () => {
     { pool },
     { sweepDriveSync },
     { driveConfigured },
+    { getStorageHealth },
   ] = await Promise.all([
     import('bullmq'),
     import('ioredis'),
@@ -37,6 +38,7 @@ const start = async () => {
     import('../server/db/client'),
     import('../server/services/invoicing/driveSync'),
     import('../server/services/invoicing/driveState'),
+    import('../server/services/system/storageHealth'),
   ]);
 
   const redisUrl = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379';
@@ -163,6 +165,16 @@ const start = async () => {
       }, 15_000)
     : undefined;
 
+  // Writes a line to the server log when storage is getting full, so it also shows up outside the CRM.
+  const checkStorage = () =>
+    getStorageHealth({ force: true })
+      .then((health) => {
+        if (health.level !== 'ok') console.warn(`[storage ${health.level}] ${health.headline}`);
+      })
+      .catch((error) => console.error('Storage check failed', error));
+  void checkStorage();
+  const storageTimer = setInterval(() => void checkStorage(), 30 * 60_000);
+
   const control = new IORedis.default(redisUrl, { maxRetriesPerRequest: null });
   await control.subscribe('shotlin:whatsapp:control');
   control.on('message', (_channel, raw) => {
@@ -203,6 +215,7 @@ const start = async () => {
     clearInterval(heartbeatTimer);
     clearInterval(reconcileTimer);
     if (driveTimer) clearInterval(driveTimer);
+    clearInterval(storageTimer);
     await whatsappManager.shutdown();
     await outboundWorker.close();
     await metaWorker.close();

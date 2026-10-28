@@ -21,13 +21,18 @@ Your folder stays private (Restricted). Nothing is shared with anyone.
 3. Click the gear (**Project Settings**), tick **Show "appsscript.json" manifest file in editor**.
    Go back to the editor, open `appsscript.json`, and replace its content with the file of the same
    name from this folder. (It sets the time zone to India and the web app options.)
-4. In **Project Settings**, scroll to **Script Properties** and add two properties:
-   - `SHEET_ID` = the Google Sheet ID you copied above.
-   - `TOKEN` = a long secret password. The CRM generates this for you (see "Hand over to the CRM").
-     Until then you can put any long random text here and replace it later.
+4. In **Project Settings**, scroll to **Script Properties** and add these four properties.
+   There are no built-in defaults, so a test copy and your real data room can never be mixed up.
+   - `SHEET_ID` = the Google Sheet ID (the text between `/spreadsheets/d/` and `/edit`).
+   - `INVOICE_ROOT_ID` = the ID of the folder **01 - GST Invoice PDFs**
+     (open the folder in Drive: the ID is the text after `/folders/` in the address bar).
+   - `PENDING_FOLDER_ID` = the ID of the folder **00 - Pending GST Invoices**, which sits inside it.
+   - `TOKEN` = the secret from the CRM server (see "Hand over to the CRM").
 5. Back in the editor, choose the function **testMySetup** in the top bar and press **Run**.
    Google asks you to approve access to Drive and Sheets. Approve it.
-   Open **Execution log**. You should see your three tabs listed as `ok` and your two folders by name.
+   Open **Execution log**. You should see the workbook's name, your three tabs listed as `ok`, and both
+   folder names. The `dataRoom` line is the name of the folder they sit in. Check it names the copy you meant
+   (for example "CRM TEST").
    If it says a column "should be ... but is ...", the workbook layout has changed. Nothing was written.
 6. Press **Deploy**, then **New deployment**. Choose the type **Web app**.
    - **Execute as:** Me

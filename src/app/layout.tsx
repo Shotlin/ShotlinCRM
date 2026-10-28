@@ -6,6 +6,7 @@ import '../styles-meta.css';
 import '../styles-ai.css';
 import '../styles-inbox.css';
 import '../styles-gst.css';
+import '../styles-storage.css';
 
 export const metadata: Metadata = {
   title: 'Shotlin CRM',
