@@ -692,3 +692,28 @@ export const replyDrafts = pgTable(
     index('reply_drafts_trigger_idx').on(table.triggeringMessageId),
   ],
 );
+
+// Money going out: bills, subscriptions, salaries, ads, loans and one-off purchases.
+export const expenses = pgTable(
+  'expenses',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+    spentAt: timestamp('spent_at', { withTimezone: true }).notNull(),
+    title: text('title').notNull(),
+    category: text('category').notNull(),
+    payeeName: text('payee_name').notNull(),
+    payeeType: text('payee_type').notNull().default('vendor'),
+    amountMinor: bigint('amount_minor', { mode: 'number' }).notNull(),
+    // GST paid inside the amount, when the bill shows it. Counts as input credit if eligible.
+    gstMinor: bigint('gst_minor', { mode: 'number' }).notNull().default(0),
+    itcEligible: boolean('itc_eligible').notNull().default(false),
+    // false = a surprise: not part of the normal monthly spending.
+    planned: boolean('planned').notNull().default(true),
+    recurring: boolean('recurring').notNull().default(false),
+    method: text('method').notNull().default(''),
+    note: text('note').notNull().default(''),
+    createdAt: createdAt(),
+  },
+  (table) => [index('expenses_workspace_spent_idx').on(table.workspaceId, table.spentAt)],
+);

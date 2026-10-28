@@ -26,7 +26,9 @@ export const frozenKey = (workspaceId: string, docNo: string, fileName: string) 
 // drawn again, so later payments cannot change what the customer was sent. Without R2 it is drawn live.
 export async function invoiceFileBytes(workspaceId: string, invoice: Loaded, format: FileFormat): Promise<Buffer> {
   const render = () => (format === 'pdf' ? renderInvoicePdf(invoice.model) : renderInvoiceDocx(invoice.model));
-  if (!isFreezable(invoice)) return render();
+  // Drafts and cancelled invoices are always drawn fresh. Anything issued may already have a master in R2,
+  // for example an invoice brought over from before the CRM, and that master wins.
+  if (invoice.cancelled || invoice.status === 'draft') return render();
   const storage = await resolveStorage(workspaceId);
   if (storage.mode !== 's3') return render();
 
@@ -39,6 +41,8 @@ export async function invoiceFileBytes(workspaceId: string, invoice: Loaded, for
     }
   }
   const bytes = await render();
-  await putObjectToBucket(storage.config, key, bytes, MIME[format], { frozen: 'true', docNo: invoice.docNo });
+  if (isFreezable(invoice)) {
+    await putObjectToBucket(storage.config, key, bytes, MIME[format], { frozen: 'true', docNo: invoice.docNo });
+  }
   return bytes;
 }

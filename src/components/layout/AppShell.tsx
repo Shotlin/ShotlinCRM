@@ -5,6 +5,7 @@ import {
   ChartNoAxesCombined,
   FileText,
   HardDrive,
+  Landmark,
   LayoutDashboard,
   MessageSquareText,
   ReceiptText,
@@ -12,6 +13,7 @@ import {
   Sparkles,
   SquareKanban,
   Users,
+  Wallet,
 } from 'lucide-react';
 import { signOut } from 'next-auth/react';
 import type { ReactNode } from 'react';
@@ -30,6 +32,8 @@ const NAV_ITEMS = [
   { to: '/proposals', label: 'Proposals', icon: FileText },
   { to: '/invoices', label: 'Invoices', icon: ReceiptText },
   { to: '/finance', label: 'Finance', icon: ChartNoAxesCombined },
+  { to: '/gst', label: 'GST returns', icon: Landmark },
+  { to: '/expenses', label: 'Expenses', icon: Wallet },
   { to: '/calendar', label: 'Calendar', icon: CalendarDays },
 ];
 

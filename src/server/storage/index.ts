@@ -10,6 +10,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { getEnv } from '../env';
+import { optimizeMedia, type OptimizeMode } from './compress';
 
 export type StoredMedia = {
   objectKey: string;
@@ -203,16 +204,22 @@ export const workspaceOfKey = (objectKey: string) => objectKey.split('/')[0];
 export async function putPrivateMedia({
   workspaceId,
   buffer,
-  mimeType,
+  mimeType: originalMime,
   filename,
+  optimize = 'received',
 }: {
   workspaceId: string;
   buffer: Buffer;
   mimeType: string;
   filename?: string;
+  // Images are shrunk (WebP for received files) and PDFs compressed before they are stored. Pass false to keep the bytes as they are.
+  optimize?: OptimizeMode | false;
 }): Promise<StoredMedia> {
   if (buffer.length === 0) throw new Error('Empty media file');
   if (buffer.length > 64 * 1024 * 1024) throw new Error('Media exceeds the 64 MB limit');
+  const shrunk = optimize ? await optimizeMedia(buffer, originalMime, optimize) : { buffer, mimeType: originalMime };
+  buffer = shrunk.buffer;
+  const mimeType = shrunk.mimeType;
   const safeName = (filename ?? 'file').replace(/[^a-zA-Z0-9._-]/g, '-').slice(-100);
   const objectKey = `${workspaceId}/${randomUUID()}.${extensions[mimeType] ?? 'bin'}`;
   const checksum = createHash('sha256').update(buffer).digest('hex');

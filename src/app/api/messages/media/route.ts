@@ -52,6 +52,7 @@ export async function POST(request: NextRequest) {
     buffer,
     mimeType: file.type,
     filename: file.name,
+    optimize: 'outgoing',
   });
   const mediaId = crypto.randomUUID();
   await db.insert(messageMedia).values({

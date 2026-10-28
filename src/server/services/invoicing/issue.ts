@@ -107,6 +107,51 @@ const itemRows = (invoiceId: string, input: GstInvoiceInput) =>
     position,
   }));
 
+// Brings an invoice that was already issued before the CRM into the register, keeping its original number.
+// The counter is moved past it so new invoices carry on from the right place. Safe to run again.
+export async function importLegacyGstInvoice(
+  workspaceId: string,
+  input: GstInvoiceInput,
+  options: { serial: number; status: 'draft' | 'sent' | 'paid'; expectedDocNo: string },
+) {
+  return db.transaction(async (tx) => {
+    await assertClientAndLead(tx, workspaceId, input.clientId, input.leadId);
+    const series = seriesFor(input.docType);
+    const fy = financialYear(input.issuedAt).label;
+    const docNo = documentNumber({ series, serial: options.serial, issuedAt: input.issuedAt });
+    if (docNo !== options.expectedDocNo) throw new Error(`Number mismatch: built ${docNo}, register says ${options.expectedDocNo}`);
+    const [existing] = await tx
+      .select({ id: invoices.id })
+      .from(invoices)
+      .where(and(eq(invoices.workspaceId, workspaceId), eq(invoices.number, docNo)))
+      .limit(1);
+    if (existing) return { id: existing.id, docNo, created: false };
+    const id = `invoice-${randomUUID()}`;
+    await tx.insert(invoices).values({
+      id,
+      workspaceId,
+      number: docNo,
+      clientId: input.clientId,
+      leadId: null,
+      status: options.status,
+      currency: 'INR',
+      series,
+      fy,
+      serial: options.serial,
+      ...fieldsFromInput(input),
+    });
+    await tx.insert(invoiceItems).values(itemRows(id, input));
+    await tx
+      .insert(invoiceSeries)
+      .values({ workspaceId, series, fy, nextSerial: options.serial + 1 })
+      .onConflictDoUpdate({
+        target: [invoiceSeries.workspaceId, invoiceSeries.series, invoiceSeries.fy],
+        set: { nextSerial: sql`greatest(${invoiceSeries.nextSerial}, ${options.serial + 1})` },
+      });
+    return { id, docNo, created: true };
+  });
+}
+
 export async function createGstInvoice(workspaceId: string, input: GstInvoiceInput) {
   const created = await db.transaction(async (tx) => {
     await assertClientAndLead(tx, workspaceId, input.clientId, input.leadId);
@@ -264,7 +309,9 @@ export async function loadGstInvoice(workspaceId: string, invoiceId: string) {
 // File name for downloads and for Drive, in the style of your existing files.
 export function invoiceFileName(model: GstInvoice, extension: 'pdf' | 'docx') {
   const word = model.docType === 'advance' ? 'Advance' : model.docType === 'final' ? 'Final' : 'Regular';
-  const who = model.customer.name
+  // "M/s DM Mobile Shop (Brand: DEALKR)" is filed under its brand, not under "M".
+  const brand = model.customer.name.match(/\(Brand:\s*([^)]+)\)/i)?.[1]?.trim();
+  const who = (brand ?? model.customer.name)
     .replace(/\b(pvt|private|ltd|limited|llp|and|enterprise|the)\b\.?/gi, '')
     .replace(/[^A-Za-z0-9]+/g, ' ')
     .trim()
