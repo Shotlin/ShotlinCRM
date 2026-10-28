@@ -133,9 +133,21 @@ export async function attachDealFile(workspaceId: string, id: string, buffer: Bu
   if (buffer.subarray(0, 5).toString() !== '%PDF-') throw new Error('Only PDF files can be uploaded');
   const [existing] = await db.select().from(dealDocuments).where(and(eq(dealDocuments.id, id), eq(dealDocuments.workspaceId, workspaceId))).limit(1);
   if (!existing) throw new Error('Not found');
+  // The signature boxes stay where they are if the edited PDF has the same number of pages (a text edit usually does).
+  let keepFields = false;
+  try {
+    const { PDFDocument } = await import('pdf-lib');
+    const fresh = (await PDFDocument.load(buffer, { updateMetadata: false })).getPageCount();
+    if (existing.fileKey) {
+      const { getPrivateMedia } = await import('../../storage');
+      keepFields = (await PDFDocument.load(await getPrivateMedia(existing.fileKey), { updateMetadata: false })).getPageCount() === fresh;
+    }
+  } catch {
+    keepFields = false;
+  }
   // Stored compressed in R2, like every other file.
   const stored = await putPrivateMedia({ workspaceId, buffer, mimeType: 'application/pdf', filename, optimize: 'outgoing' });
-  await db.update(dealDocuments).set({ fileKey: stored.objectKey, fileName: filename.slice(-160), fileSize: stored.sizeBytes, content: null, updatedAt: new Date() }).where(eq(dealDocuments.id, id));
+  await db.update(dealDocuments).set({ fileKey: stored.objectKey, fileName: filename.slice(-160), fileSize: stored.sizeBytes, content: null, ...(keepFields ? {} : { signFields: [] }), updatedAt: new Date() }).where(eq(dealDocuments.id, id));
   if (existing.fileKey) await deletePrivateMedia(existing.fileKey).catch(() => undefined);
   return stored.sizeBytes;
 }
@@ -145,10 +157,10 @@ export async function regenerateWrittenPdf(workspaceId: string, id: string) {
   if (await isDocumentLocked(id)) throw new Error(LOCKED_NOTE);
   const [existing] = await db.select().from(dealDocuments).where(and(eq(dealDocuments.id, id), eq(dealDocuments.workspaceId, workspaceId))).limit(1);
   if (!existing) throw new Error('Not found');
-  const bytes = await renderStoredDeal(workspaceId, id);
+  const { bytes, fields } = await renderStoredDeal(workspaceId, id);
   const name = `${existing.title.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 80) || 'Document'}.pdf`;
   const stored = await putPrivateMedia({ workspaceId, buffer: bytes, mimeType: 'application/pdf', filename: name, optimize: 'outgoing' });
-  await db.update(dealDocuments).set({ fileKey: stored.objectKey, fileName: name, fileSize: stored.sizeBytes, updatedAt: new Date() }).where(eq(dealDocuments.id, id));
+  await db.update(dealDocuments).set({ fileKey: stored.objectKey, fileName: name, fileSize: stored.sizeBytes, signFields: fields, updatedAt: new Date() }).where(eq(dealDocuments.id, id));
   if (existing.fileKey) await deletePrivateMedia(existing.fileKey).catch(() => undefined);
 }
 
@@ -173,6 +185,29 @@ export async function previewDeal(workspaceId: string, input: DealInput) {
     milestones: input.milestones.map((m) => ({ title: m.title, trigger: m.trigger, baseMinor: toPaise(m.amountRupees) })),
     blocks: (input.content ?? []) as Block[],
   });
+}
+
+export const signFieldsSchema = z.object({
+  fields: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(40),
+        role: z.enum(['client', 'developer']),
+        page: z.number().int().min(1).max(500),
+        x: z.number().min(0).max(1),
+        y: z.number().min(0).max(1),
+        w: z.number().min(0.05).max(1),
+        h: z.number().min(0.02).max(1),
+      }),
+    )
+    .max(20),
+});
+
+// Where the signatures will be stamped on the PDF. Locked once a client has signed.
+export async function saveSignFields(workspaceId: string, id: string, fields: z.infer<typeof signFieldsSchema>['fields']) {
+  if (await isDocumentLocked(id)) throw new Error(LOCKED_NOTE);
+  const result = await db.update(dealDocuments).set({ signFields: fields, updatedAt: new Date() }).where(and(eq(dealDocuments.id, id), eq(dealDocuments.workspaceId, workspaceId))).returning({ id: dealDocuments.id });
+  if (result.length === 0) throw new Error('Not found');
 }
 
 export async function deleteDeal(workspaceId: string, id: string) {
@@ -238,6 +273,7 @@ export async function getDeal(workspaceId: string, id: string) {
     brief: doc.brief,
     reviewNote: doc.reviewNote,
     content: doc.content ?? null,
+    signFields: doc.signFields ?? [],
     fileName: doc.fileName,
     fileSize: doc.fileSize,
     hasFile: Boolean(doc.fileKey),

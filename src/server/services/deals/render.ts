@@ -6,6 +6,7 @@ import { db } from '../../db/client';
 import { clients, dealDocuments, leads, projectMilestones } from '../../db/schema';
 import { SUPPLIER } from '../invoicing/supplier';
 import type { Block } from './content';
+import type { SignField } from './fields';
 import { gstOf } from './milestones';
 
 const FONT_DIR = path.join(process.cwd(), 'src/server/services/invoicing/assets/fonts');
@@ -32,6 +33,8 @@ export type RenderInput = {
   party: { name: string; lines: string[] };
   milestones: { title: string; trigger: string; baseMinor: number }[];
   blocks: Block[];
+  // Called with the signature boxes this layout drew, so signing can stamp inside them.
+  onFields?: (fields: SignField[]) => void;
 };
 
 export async function renderDealPdf(input: RenderInput): Promise<Buffer> {
@@ -189,6 +192,15 @@ export async function renderDealPdf(input: RenderInput): Promise<Buffer> {
   doc.moveDown(0.8);
   const sy = doc.y;
   const boxW = width / 2 - 6;
+  const pageNumber = doc.bufferedPageRange().count;
+  const pageW = doc.page.width;
+  const pageH = doc.page.height;
+  const xClient = LEFT;
+  const xDev = LEFT + width / 2 + 6;
+  input.onFields?.([
+    { id: 'client-main', role: 'client', page: pageNumber, x: (xClient + 8) / pageW, y: (sy + 46) / pageH, w: (boxW - 16) / pageW, h: 50 / pageH },
+    { id: 'developer-main', role: 'developer', page: pageNumber, x: (xDev + 8) / pageW, y: (sy + 46) / pageH, w: (boxW - 16) / pageW, h: 50 / pageH },
+  ]);
   [[LEFT, input.kind === 'agreement' ? 'FOR THE CLIENT' : 'FOR THE CLIENT', input.party.name], [LEFT + width / 2 + 6, 'FOR THE DEVELOPER', SUPPLIER.name]].forEach(([x, head, who]) => {
     doc.rect(x as number, sy, boxW, 24).fill(NAVY);
     doc.font('B').fontSize(9).fillColor('#FFFFFF').text(head as string, x as number, sy + 8, { width: boxW, align: 'center' });
@@ -213,7 +225,7 @@ export async function renderDealPdf(input: RenderInput): Promise<Buffer> {
 }
 
 // Reads everything the document needs from the database, so the PDF is always built from the current details.
-export async function renderStoredDeal(workspaceId: string, documentId: string): Promise<Buffer> {
+export async function renderStoredDeal(workspaceId: string, documentId: string): Promise<{ bytes: Buffer; fields: SignField[] }> {
   const [row] = await db
     .select({ doc: dealDocuments, client: clients, lead: leads })
     .from(dealDocuments)
@@ -225,7 +237,8 @@ export async function renderStoredDeal(workspaceId: string, documentId: string):
   const ms = await db.select().from(projectMilestones).where(eq(projectMilestones.documentId, documentId)).orderBy(asc(projectMilestones.position));
   const c = row.client;
   const l = row.lead;
-  return renderDealPdf({
+  let fields: SignField[] = [];
+  const bytes = await renderDealPdf({
     kind: row.doc.kind as 'proposal' | 'agreement',
     title: row.doc.title,
     reference: row.doc.reference,
@@ -240,5 +253,9 @@ export async function renderStoredDeal(workspaceId: string, documentId: string):
     },
     milestones: ms.map((m) => ({ title: m.title, trigger: m.trigger, baseMinor: m.baseMinor })),
     blocks: (row.doc.content ?? []) as Block[],
+    onFields: (found) => {
+      fields = found;
+    },
   });
+  return { bytes, fields };
 }

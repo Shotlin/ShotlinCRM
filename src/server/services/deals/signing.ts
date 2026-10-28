@@ -3,11 +3,12 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import PDFDocument from 'pdfkit';
-import { PDFDocument as LibDocument } from 'pdf-lib';
+import { PDFDocument as LibDocument, StandardFonts, rgb } from 'pdf-lib';
 import { db } from '../../db/client';
 import { clients, dealDocuments, documentSignatures, leads, projectMilestones, workspaces } from '../../db/schema';
 import { deletePrivateMedia, getPrivateMedia, putPrivateMedia } from '../../storage';
 import { SUPPLIER } from '../invoicing/supplier';
+import type { SignField } from './fields';
 import { gstOf } from './milestones';
 
 const FONT_DIR = path.join(process.cwd(), 'src/server/services/invoicing/assets/fonts');
@@ -114,6 +115,32 @@ export async function renderAcceptancePage(input: { documentTitle: string; refer
   return done;
 }
 
+// Puts the signature picture inside each box that was placed for it, with a one-line note under it.
+// Without any boxes the document is returned unchanged and only the acceptance page is added.
+export async function stampSignatures(original: Buffer, fields: SignField[], png: Buffer | null, caption: string): Promise<Buffer> {
+  if (fields.length === 0) return original;
+  const pdf = await LibDocument.load(original, { updateMetadata: false });
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const image = png ? await pdf.embedPng(png) : null;
+  const note = caption.replace(/[^\x20-\x7E]/g, '?');
+  for (const field of fields) {
+    if (field.page > pdf.getPageCount()) continue;
+    const page = pdf.getPage(field.page - 1);
+    const { width, height } = page.getSize();
+    const boxX = field.x * width;
+    const boxW = field.w * width;
+    const boxH = field.h * height;
+    const boxY = height - (field.y + field.h) * height;
+    const captionH = 10;
+    if (image) {
+      const ratio = Math.min(boxW / image.width, Math.max(boxH - captionH, 8) / image.height);
+      page.drawImage(image, { x: boxX, y: boxY + captionH, width: image.width * ratio, height: image.height * ratio });
+    }
+    page.drawText(note, { x: boxX, y: boxY + 2, size: 6.5, font, color: rgb(0.43, 0.45, 0.5), maxWidth: boxW });
+  }
+  return Buffer.from(await pdf.save({ useObjectStreams: true }));
+}
+
 // Adds the acceptance page(s) to the end of the document.
 export async function appendPages(original: Buffer, extra: Buffer): Promise<Buffer> {
   const target = await LibDocument.load(original, { updateMetadata: false });
@@ -155,7 +182,9 @@ export async function submitClientSignature(link: { workspaceId: string; targetI
     entry: { heading: 'Client acceptance', name, title: input.title.trim(), signedAt, ip: input.ip, png },
     statement: `I, ${name}${input.title.trim() ? `, ${input.title.trim()}` : ''}, have read this document in full, understood it, and agree to be bound by it. I confirm I am authorised to sign it on behalf of the client named in it. I adopt the signature drawn below as my own signature.`,
   });
-  const merged = await appendPages(original, page);
+  const placed = (doc.signFields ?? []).filter((field) => field.role === 'client');
+  const stamped = await stampSignatures(original, placed, png, `Digitally signed by ${name} on ${new Intl.DateTimeFormat('en-GB', { timeZone: IST, day: '2-digit', month: 'short', year: 'numeric' }).format(signedAt)}`);
+  const merged = await appendPages(stamped, page);
   const swap = await swapFile(link.workspaceId, doc.id, doc.fileKey, merged, `Signed_${slug(doc.title)}.pdf`);
   const signaturePicture = await putPrivateMedia({ workspaceId: link.workspaceId, buffer: png, mimeType: 'image/png', filename: 'signature.png', optimize: false });
 
@@ -232,7 +261,9 @@ export async function countersign(workspaceId: string, documentId: string, input
     entry: { heading: 'Countersigned by Shotlin', name, title, signedAt, png },
     statement: `${SUPPLIER.name} has reviewed the client's signed copy of this document and approves it. This page confirms the agreement is now fully signed by both parties. The fingerprint below is that of the client-signed copy it follows.`,
   });
-  const merged = await appendPages(original, page);
+  const placed = (doc.signFields ?? []).filter((field) => field.role === 'developer');
+  const stamped = await stampSignatures(original, placed, png, `Countersigned by ${name} on ${new Intl.DateTimeFormat('en-GB', { timeZone: IST, day: '2-digit', month: 'short', year: 'numeric' }).format(signedAt)}`);
+  const merged = await appendPages(stamped, page);
   const swap = await swapFile(workspaceId, doc.id, doc.fileKey, merged, `Signed_${slug(doc.title)}.pdf`);
   const updated = await db
     .update(dealDocuments)
@@ -294,6 +325,7 @@ export async function loadSigningView(workspaceId: string, documentId: string) {
     hasFile: Boolean(doc.fileKey),
     reviewNote: doc.reviewNote,
     milestones: ms.map((m) => ({ title: m.title, trigger: m.trigger, grossMinor: m.baseMinor + gstOf(m.baseMinor, doc.gstRatePct) })),
+    signBoxPages: [...new Set((doc.signFields ?? []).filter((field) => field.role === 'client').map((field) => field.page))],
     clientSignature: signatures.find((s) => s.role === 'client') ?? null,
     countersigned: signatures.some((s) => s.role === 'developer'),
   };

@@ -1,0 +1,1 @@
+ALTER TABLE "deal_documents" ADD COLUMN "sign_fields" jsonb DEFAULT '[]'::jsonb NOT NULL;

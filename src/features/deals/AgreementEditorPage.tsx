@@ -1,13 +1,15 @@
 'use client';
 
-import { ArrowLeft, Check, Download, FileSignature, FolderKanban, LoaderCircle, Plus, Trash2, Upload } from 'lucide-react';
+import { ArrowLeft, Check, Download, FileSignature, FolderKanban, LoaderCircle, PenLine, Plus, Trash2, Upload } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from '@/lib/router';
 import { describeMilestones, gstOf, splitByPercent } from '@/server/services/deals/milestones';
 import { useCrmStore } from '@/store/crmStore';
 import { day, inr } from '../gst/format';
 import { BlockEditor } from './BlockEditor';
+import { SignaturePlacer } from './SignaturePlacer';
 import { SigningPanel } from './SigningPanel';
+import type { SignField } from '@/server/services/deals/fields';
 import { starterBlocks, type Block } from '@/server/services/deals/content';
 
 type Row = { key: string; title: string; trigger: string; amount: string; dueOn: string };
@@ -49,6 +51,7 @@ type Loaded = {
   hasFile: boolean;
   sourceDocumentId: string | null;
   content: Block[] | null;
+  signFields: SignField[];
   projectId: string | null;
   milestones: { id: string; title: string; trigger: string; baseMinor: number; dueOn: string | null }[];
 };
@@ -101,6 +104,7 @@ export function AgreementEditorPage() {
   const [busy, setBusy] = useState<'save' | 'project' | 'upload' | 'preview' | null>(null);
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
+  const [editorUrl, setEditorUrl] = useState<string | null>(null);
 
   const signedLock = Boolean(loaded && (loaded.status === 'client_signed' || loaded.status === 'signed'));
   const locked = Boolean(loaded?.projectId) || signedLock;
@@ -142,6 +146,13 @@ export function AgreementEditorPage() {
       setForm(fromLoaded(doc));
     }
   };
+
+  useEffect(() => {
+    fetch('/api/settings/pdf-editor', { cache: 'no-store' })
+      .then((r) => (r.ok ? (r.json() as Promise<{ url: string | null }>) : null))
+      .then((r) => r && setEditorUrl(r.url))
+      .catch(() => undefined);
+  }, []);
 
   const baseMinor = paise(form.base);
   const rate = Math.round(Number(form.gstRatePct) || 0);
@@ -396,7 +407,24 @@ export function AgreementEditorPage() {
             <BlockEditor blocks={form.blocks} onChange={(next) => set('blocks', next)} disabled={signedLock} />
           </>
         )}
+        {form.mode === 'upload' && loaded?.hasFile && editorUrl && !signedLock ? (
+          <div className="bk-edit-pdf">
+            <p><b>Need to change words, numbers or dates inside this PDF?</b> Download it, open it in the PDF editor (it runs in your browser, nothing is uploaded), edit the text, save it, then press “Replace PDF” above. Your signature boxes stay if the page count is the same.</p>
+            <div className="bk-row-actions">
+              <a className="btn btn-secondary" href={`/api/agreements/${loaded.id}/file`} download={loaded.fileName ?? 'document.pdf'}><Download size={15} aria-hidden="true" /> 1. Download this PDF</a>
+              <a className="btn btn-primary" href={`${editorUrl}/edit-pdf-text`} target="_blank" rel="noreferrer"><PenLine size={15} aria-hidden="true" /> 2. Open the PDF editor</a>
+            </div>
+          </div>
+        ) : null}
       </section>
+
+      {!isNew && loaded?.hasFile ? (
+        <section className="card section-card">
+          <h3><PenLine size={17} aria-hidden="true" /> Where the signatures go</h3>
+          <p className="bk-note bk-note-top">Click “Client signature box” to add a box, then drag it to the exact line on the real page where the client should sign. Add one for your own countersignature too. {loaded.content ? 'This document was written here, so the boxes in its signature block are already placed.' : 'For an uploaded PDF, place them yourself. Replacing the PDF clears them.'}</p>
+          <SignaturePlacer dealId={loaded.id} initial={loaded.signFields} disabled={signedLock} onSaved={() => void refreshLoaded()} />
+        </section>
+      ) : null}
 
       <section className="card section-card">
         <h3><Check size={17} aria-hidden="true" /> Cost and payment milestones</h3>

@@ -186,3 +186,20 @@
 .bk-block-add .bk-sub { display: inline-flex; align-items: center; gap: 3px; margin-right: 4px; }
 
 .bk-row-top { margin: 0 0 14px; }
+
+/* ---- placing signature boxes on the PDF */
+.bk-pages { display: flex; flex-direction: column; gap: 14px; align-items: center; margin-top: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 7px; background: var(--soft-strong); max-height: 760px; overflow-y: auto; }
+.bk-page-wrap { width: min(760px, 100%); }
+.bk-page-no { margin-bottom: 4px; color: var(--muted); font-size: 10px; font-weight: 570; letter-spacing: 0.06em; text-transform: uppercase; }
+.bk-pdf-page { position: relative; width: 100%; background: #fff; box-shadow: 0 1px 6px rgba(20, 21, 18, 0.18); touch-action: none; user-select: none; }
+.bk-pdf-canvas { display: block; width: 100%; height: auto; }
+.bk-sign-box { position: absolute; display: flex; align-items: center; justify-content: center; border: 1.5px dashed var(--violet); background: rgba(117, 96, 134, 0.14); border-radius: 4px; cursor: grab; }
+.bk-sign-box span { color: var(--violet); font-size: 10px; font-weight: 600; pointer-events: none; text-align: center; padding: 0 4px; }
+.bk-sign-developer { border-color: var(--green); background: rgba(63, 117, 81, 0.14); }
+.bk-sign-developer span { color: var(--green); }
+.bk-sign-box.off { cursor: default; opacity: 0.8; }
+.bk-sign-x { position: absolute; top: -10px; right: -10px; display: grid; place-items: center; width: 20px; height: 20px; border: 0; border-radius: 50%; background: var(--ink); color: #fff; cursor: pointer; }
+.bk-sign-grip { position: absolute; right: -6px; bottom: -6px; width: 12px; height: 12px; border-radius: 3px; background: var(--ink); cursor: nwse-resize; }
+
+.bk-edit-pdf { margin-top: 14px; padding: 13px 15px; border: 1px solid var(--line); border-radius: 7px; background: var(--soft); }
+.bk-edit-pdf p { margin: 0 0 4px; color: var(--ink-soft); font-size: 11.5px; line-height: 1.55; }

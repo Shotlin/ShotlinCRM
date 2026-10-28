@@ -12,6 +12,7 @@ type View = {
   gstMinor: number;
   gstRatePct: number;
   reviewNote: string;
+  signBoxPages: number[];
   milestones: { title: string; trigger: string; grossMinor: number }[];
   clientSignature: { name: string; title: string; signedAt: string } | null;
   countersigned: boolean;
@@ -161,6 +162,7 @@ export function SignForm({ token, view }: { token: string; view: View }) {
             <label>Your role (optional)<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Proprietor, Director" maxLength={120} /></label>
           </div>
           <p className="sh-label">Draw your signature</p>
+          {view.signBoxPages.length > 0 ? <p className="sh-sub">It will be placed in the signature box on page {view.signBoxPages.join(', ')} of the document, and recorded on a signature page at the end.</p> : null}
           <canvas ref={canvas} className="sh-pad" onPointerDown={start} onPointerMove={move} onPointerUp={stop} onPointerCancel={stop} aria-label="Signature pad" />
           <div className="sh-row">
             <button type="button" className="sh-btn sh-btn-ghost" onClick={clear}>Clear</button>

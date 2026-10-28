@@ -748,6 +748,8 @@ export const dealDocuments = pgTable(
     brief: text('brief').notNull().default(''),
     // A document written in the CRM: the blocks the PDF is made from. Null for an uploaded PDF.
     content: jsonb('content').$type<{ id: string; type: 'h1' | 'h2' | 'p' | 'bullets' | 'numbered' | 'table' | 'pagebreak'; text: string }[] | null>(),
+    // Where the signatures go on the PDF, as fractions of the page so they do not depend on screen size.
+    signFields: jsonb('sign_fields').$type<{ id: string; role: 'client' | 'developer'; page: number; x: number; y: number; w: number; h: number }[]>().notNull().default([]),
     // What the client said when they asked for a change.
     reviewNote: text('review_note').notNull().default(''),
     fileKey: text('file_key'),
