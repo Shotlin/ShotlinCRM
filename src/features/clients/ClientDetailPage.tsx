@@ -27,7 +27,6 @@ import { Avatar } from '../../components/ui/Avatar';
 import { StatusPill } from '../../components/ui/Badges';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { PageHeader } from '../../components/layout/PageHeader';
-import { useToast } from '../../components/ui/Toast';
 import { ClientDialog } from './ClientDialog';
 
 type ClientTab = 'overview' | 'proposals' | 'invoices' | 'activity';
@@ -44,15 +43,12 @@ export function ClientDetailPage() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<ClientTab>('overview');
   const [editOpen, setEditOpen] = useState(false);
-  const { notify } = useToast();
   const clients = useCrmStore((state) => state.clients);
   const leads = useCrmStore((state) => state.leads);
   const proposals = useCrmStore((state) => state.proposals);
   const invoices = useCrmStore((state) => state.invoices);
   const payments = useCrmStore((state) => state.payments);
   const messages = useCrmStore((state) => state.messages);
-  const createProposal = useCrmStore((state) => state.createProposal);
-  const flush = useCrmStore((state) => state.flush);
   const reportingCurrency = useCrmStore((state) => state.reportingCurrency);
 
   const client = clients.find((item) => item.id === clientId);
@@ -139,24 +135,16 @@ export function ClientDetailPage() {
     );
   }
 
-  const newProposal = async () => {
-    const proposal = createProposal({
+  // Opens the proposal form with this client chosen. Nothing is saved until you press Save.
+  const newProposal = () => {
+    const query = new URLSearchParams({
       clientId: client.id,
-      leadId: latestLead?.id,
       title: `${client.company} project`,
       currency: latestLead?.currency ?? reportingCurrency,
-      lineItems: [
-        {
-          id: `line-${Date.now()}`,
-          description: 'Production',
-          quantity: 1,
-          unitPriceMinor: latestLead?.valueMinor ?? 0,
-        },
-      ],
+      value: String(latestLead?.valueMinor ?? 0),
     });
-    await flush();
-    notify('Draft proposal created');
-    navigate(`/proposals/${proposal.id}/edit`);
+    if (latestLead?.id) query.set('leadId', latestLead.id);
+    navigate(`/proposals/new/edit?${query.toString()}`);
   };
 
   // Opens the GST invoice form with this client chosen. Nothing is saved until you press Create draft.

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Check, FileText, Plus, Send, Trash2 } from 'lucide-react';
-import { Link, useParams } from '../../lib/router';
+import { Link, useNavigate, useParams } from '../../lib/router';
 import { addDays, format } from 'date-fns';
 import {
   CURRENCIES,
@@ -8,7 +8,7 @@ import {
   formatMoney,
   lineItemsTotalMinor,
 } from '../../data/currencies';
-import type { Currency, LineItem, ProposalStatus } from '../../data/types';
+import type { Currency, LineItem, Proposal, ProposalStatus } from '../../data/types';
 import { formatDate, PROPOSAL_STATUS_LABELS, toMoneyInput } from '../../lib/format';
 import { useCrmStore } from '../../store/crmStore';
 import { EmptyState } from '../../components/ui/EmptyState';
@@ -57,14 +57,18 @@ const emptyDraft: ProposalDraft = {
   lines: [{ id: 'new-line', description: '', quantity: '1', unitPrice: '' }],
 };
 
+// "New proposal" opens this editor at /proposals/new/edit. Nothing is saved until you press Save.
+const NEW_ID = 'new';
+
 export function ProposalEditorPage() {
   const { proposalId } = useParams();
+  const isNew = proposalId === NEW_ID;
   const { notify } = useToast();
-  const proposal = useCrmStore((state) =>
-    state.proposals.find((item) => item.id === proposalId),
-  );
+  const navigate = useNavigate();
+  const stored = useCrmStore((state) => state.proposals.find((item) => item.id === proposalId));
   const clients = useCrmStore((state) => state.clients);
   const leads = useCrmStore((state) => state.leads);
+  const createProposal = useCrmStore((state) => state.createProposal);
   const updateProposal = useCrmStore((state) => state.updateProposal);
   const setProposalStatus = useCrmStore((state) => state.setProposalStatus);
   const convertLeadToClient = useCrmStore((state) => state.convertLeadToClient);
@@ -72,18 +76,52 @@ export function ProposalEditorPage() {
   const [draft, setDraft] = useState<ProposalDraft>(emptyDraft);
   const [error, setError] = useState('');
 
+  // A stand-in shown while the proposal is new. It is never stored.
+  const blankProposal = useMemo<Proposal>(
+    () => ({
+      id: NEW_ID,
+      number: 'Assigned when saved',
+      title: '',
+      status: 'draft',
+      currency: 'INR',
+      issuedAt: new Date().toISOString(),
+      validUntil: '',
+      notes: '',
+      updatedAt: new Date().toISOString(),
+      lineItems: [],
+    }),
+    [],
+  );
+  const proposal = stored ?? (isNew ? blankProposal : undefined);
+
   useEffect(() => {
-    if (!proposal) return;
+    if (isNew) {
+      // The client, lead, title and value can arrive in the address so the form starts filled in.
+      const query = new URLSearchParams(window.location.search);
+      const value = Number(query.get('value') ?? 0);
+      const currency = query.get('currency');
+      setDraft({
+        ...emptyDraft,
+        title: query.get('title') ?? '',
+        clientId: query.get('clientId') ?? '',
+        leadId: query.get('leadId') ?? '',
+        currency: (CURRENCIES as readonly string[]).includes(currency ?? '') ? (currency as Currency) : 'INR',
+        lines: [{ id: `line-${Date.now()}`, description: value > 0 ? 'Production' : '', quantity: '1', unitPrice: value > 0 ? toMoneyInput(value) : '' }],
+      });
+      setError('');
+      return;
+    }
+    if (!stored) return;
     setDraft({
-      title: proposal.title,
-      clientId: proposal.clientId ?? '',
-      leadId: proposal.leadId ?? '',
-      currency: proposal.currency,
-      validUntil: proposal.validUntil.slice(0, 10),
-      notes: proposal.notes,
+      title: stored.title,
+      clientId: stored.clientId ?? '',
+      leadId: stored.leadId ?? '',
+      currency: stored.currency,
+      validUntil: stored.validUntil.slice(0, 10),
+      notes: stored.notes,
       lines:
-        proposal.lineItems.length > 0
-          ? proposal.lineItems.map(toEditorLine)
+        stored.lineItems.length > 0
+          ? stored.lineItems.map(toEditorLine)
           : [{ id: `line-${Date.now()}`, description: '', quantity: '1', unitPrice: '' }],
     });
     setError('');
@@ -155,13 +193,15 @@ export function ProposalEditorPage() {
     }));
   };
 
-  const persist = (status?: ProposalStatus) => {
+  // Saves the draft and returns the proposal's id, or null when something is missing.
+  // For a new proposal this is the moment the record is created.
+  const persist = (status?: ProposalStatus): string | null => {
     if (!draft.title.trim()) {
       setError('Add a proposal title before saving.');
-      return false;
+      return null;
     }
     setError('');
-    updateProposal(proposal.id, {
+    const fields = {
       title: draft.title.trim(),
       clientId: draft.clientId || undefined,
       leadId: draft.leadId || undefined,
@@ -169,25 +209,30 @@ export function ProposalEditorPage() {
       validUntil: `${draft.validUntil}T18:00:00`,
       notes: draft.notes,
       lineItems: toStoreLines(draft.lines),
-    });
-    if (status) setProposalStatus(proposal.id, status);
-    return true;
+    };
+    let id = proposal.id;
+    if (isNew) id = createProposal(fields).id;
+    else updateProposal(id, fields);
+    if (status) setProposalStatus(id, status);
+    return id;
   };
 
   const handleSave = async () => {
-    if (persist()) {
-      await flush();
-      notify('Proposal saved');
-    }
+    const id = persist();
+    if (!id) return;
+    await flush();
+    notify(isNew ? 'Proposal created' : 'Proposal saved');
+    if (isNew) navigate(`/proposals/${id}/edit`);
   };
 
   const handleStatus = async (status: ProposalStatus) => {
-    if (!persist(status)) return;
+    const id = persist(status);
+    if (!id) return;
     if (status === 'accepted') {
       let clientId = draft.clientId;
       if (!clientId && draft.leadId) {
         clientId = convertLeadToClient(draft.leadId);
-        updateProposal(proposal.id, { clientId });
+        updateProposal(id, { clientId });
         setDraft((current) => ({ ...current, clientId }));
       }
       await flush();
@@ -196,6 +241,7 @@ export function ProposalEditorPage() {
       await flush();
       notify(`Proposal marked as ${PROPOSAL_STATUS_LABELS[status].toLowerCase()}`);
     }
+    if (isNew) navigate(`/proposals/${id}/edit`);
   };
 
   return (
@@ -209,13 +255,13 @@ export function ProposalEditorPage() {
 
       <div className="editor-title-row">
         <div>
-          <h1>{proposal.status === 'draft' ? 'Edit proposal' : proposal.title}</h1>
-          <p>Changes in the editor update the live summary in real time.</p>
+          <h1>{isNew ? 'New proposal' : proposal.status === 'draft' ? 'Edit proposal' : proposal.title}</h1>
+          <p>{isNew ? 'Nothing is saved until you press Save.' : 'Changes in the editor update the live summary in real time.'}</p>
         </div>
         <div className="editor-top-actions">
           <StatusPill status={proposal.status} kind="proposal" />
           <button type="button" className="btn btn-secondary" onClick={handleSave}>
-            <Check size={15} /> Save changes
+            <Check size={15} /> {isNew ? 'Save proposal' : 'Save changes'}
           </button>
           {proposal.status === 'draft' ? (
             <button

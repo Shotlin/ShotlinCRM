@@ -10,7 +10,6 @@ import { useCrmStore } from '../../store/crmStore';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { StatusPill } from '../../components/ui/Badges';
-import { useToast } from '../../components/ui/Toast';
 
 type ProposalFilter = 'all' | ProposalStatus;
 
@@ -29,10 +28,7 @@ export function ProposalsPage() {
   const clients = useCrmStore((state) => state.clients);
   const leads = useCrmStore((state) => state.leads);
   const reportingCurrency = useCrmStore((state) => state.reportingCurrency);
-  const createProposal = useCrmStore((state) => state.createProposal);
-  const flush = useCrmStore((state) => state.flush);
   const navigate = useNavigate();
-  const { notify } = useToast();
 
   const enriched = useMemo(
     () =>
@@ -82,12 +78,8 @@ export function ProposalsPage() {
     );
   const sentCount = enriched.filter((proposal) => proposal.status === 'sent').length;
 
-  const handleNew = async () => {
-    const proposal = createProposal();
-    await flush();
-    notify('Draft proposal created');
-    navigate(`/proposals/${proposal.id}/edit`);
-  };
+  // Opens an empty proposal form. Nothing is saved until you press Save.
+  const handleNew = () => navigate('/proposals/new/edit');
 
   return (
     <div className="page proposals-page">

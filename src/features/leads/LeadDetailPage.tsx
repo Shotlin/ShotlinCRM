@@ -53,7 +53,6 @@ export function LeadDetailPage() {
   const moveLead = useCrmStore((state) => state.moveLead);
   const addNote = useCrmStore((state) => state.addNote);
   const sendMessage = useCrmStore((state) => state.sendMessage);
-  const createProposal = useCrmStore((state) => state.createProposal);
   const convertLeadToClient = useCrmStore((state) => state.convertLeadToClient);
   const flush = useCrmStore((state) => state.flush);
 
@@ -160,23 +159,16 @@ export function LeadDetailPage() {
     );
   }
 
-  const handleCreateProposal = async () => {
-    const proposal = createProposal({
+  // Opens the proposal form with this lead chosen. Nothing is saved until you press Save.
+  const handleCreateProposal = () => {
+    const query = new URLSearchParams({
       leadId: lead.id,
-      clientId: lead.clientId,
       title: `${lead.company || lead.name} project`,
       currency: lead.currency,
-      lineItems: [
-        {
-          id: `line-${Date.now()}`,
-          description: 'Production',
-          quantity: 1,
-          unitPriceMinor: lead.valueMinor,
-        },
-      ],
+      value: String(lead.valueMinor),
     });
-    await flush();
-    navigate(`/proposals/${proposal.id}/edit`);
+    if (lead.clientId) query.set('clientId', lead.clientId);
+    navigate(`/proposals/new/edit?${query.toString()}`);
   };
 
   const handleConvert = async () => {
