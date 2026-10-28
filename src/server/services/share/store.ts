@@ -62,6 +62,7 @@ export async function loadPublicProject(workspaceId: string, projectId: string) 
     roadmap: detail.roadmap.map((item) => ({ title: item.title, detail: item.detail, dueOn: item.dueOn, status: item.status })),
     agreement: detail.agreement?.hasFile ? { title: detail.agreement.title } : null,
     milestones: detail.milestones.map((m) => ({
+      additional: m.kind === 'additional',
       title: m.title,
       trigger: m.trigger,
       baseMinor: m.baseMinor,

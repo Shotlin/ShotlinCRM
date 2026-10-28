@@ -2,7 +2,7 @@ import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { getAuthContext } from '@/server/auth/config';
 import { verifySameOrigin } from '@/server/http/security';
-import { milestonePatchSchema, updateMilestone } from '@/server/services/deals/store';
+import { milestonePatchSchema, removeAdditionalCharge, updateMilestone } from '@/server/services/deals/store';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,5 +18,18 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json({ error: 'Milestone not found' }, { status: 404 });
+  }
+}
+
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ projectId: string; milestoneId: string }> }) {
+  if (!verifySameOrigin(request)) return NextResponse.json({ error: 'Invalid origin' }, { status: 403 });
+  const context = await getAuthContext();
+  if (!context) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const { projectId, milestoneId } = await params;
+  try {
+    await removeAdditionalCharge(context.workspaceId, projectId, milestoneId);
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Could not remove it' }, { status: 409 });
   }
 }

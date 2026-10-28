@@ -762,6 +762,8 @@ export const projectMilestones = pgTable(
     documentId: text('document_id').references(() => dealDocuments.id, { onDelete: 'cascade' }),
     projectId: text('project_id').references(() => projects.id, { onDelete: 'cascade' }),
     position: integer('position').notNull(),
+    // 'agreed' is part of the signed payment schedule; 'additional' is extra work billed on top of it.
+    kind: text('kind').notNull().default('agreed'),
     title: text('title').notNull(),
     trigger: text('trigger').notNull().default(''),
     // Basis points: 3333 means 33.33%.

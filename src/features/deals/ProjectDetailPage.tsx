@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { MetricCard } from '@/components/ui/MetricCard';
 import { Link, useParams } from '@/lib/router';
-import { invoicePlan } from '@/server/services/deals/milestones';
+import { gstOf, invoicePlan } from '@/server/services/deals/milestones';
 import { day, inr } from '../gst/format';
 import { PROJECT_STATUS } from './ProjectsPage';
 import { SharePanel } from './SharePanel';
@@ -14,6 +14,7 @@ type RoadmapItem = { id: string; title: string; detail: string; dueOn: string | 
 type Milestone = {
   id: string;
   index: number;
+  kind: 'agreed' | 'additional';
   title: string;
   trigger: string;
   baseMinor: number;
@@ -32,6 +33,7 @@ type Detail = {
   roadmap: RoadmapItem[];
   client: { id: string; name: string; company: string };
   agreement: { id: string; title: string; hasFile: boolean } | null;
+  gstRatePct: number;
   milestones: Milestone[];
 };
 
@@ -47,6 +49,8 @@ export function ProjectDetailPage() {
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [extra, setExtra] = useState({ title: '', trigger: '', amount: '', dueOn: '', status: 'planned' as Milestone['status'] });
 
   const load = useCallback(async () => {
     const response = await fetch(`/api/projects/${projectId}`, { cache: 'no-store' });
@@ -85,16 +89,34 @@ export function ProjectDetailPage() {
 
   if (!data) return <div className="page">{error ? <p className="bk-error" role="alert">{error}</p> : <p className="bk-loading"><LoaderCircle className="spin" size={18} aria-hidden="true" /> Loading…</p>}</div>;
 
-  const parts = data.milestones.map((m) => m.baseMinor);
+  // The invoice plan (advances first, final last) only looks at the agreed milestones.
+  const agreed = data.milestones.filter((m) => m.kind === 'agreed');
+  const additional = data.milestones.filter((m) => m.kind === 'additional');
+  const parts = agreed.map((m) => m.baseMinor);
   const total = parts.reduce((a, b) => a + b, 0);
+  const additionalTotal = additional.reduce((a, m) => a + m.baseMinor, 0);
   const invoicedMinor = data.milestones.filter((m) => m.invoice && !m.invoice.cancelled).reduce((a, m) => a + m.baseMinor, 0);
   const ongoing = roadmap.filter((r) => r.status === 'in_progress');
   const upcoming = roadmap.filter((r) => r.status === 'planned');
   const done = roadmap.filter((r) => r.status === 'done');
 
   const invoiceLink = (m: Milestone) => {
-    const plan = invoicePlan(parts, m.index);
-    const before = data.milestones.slice(0, m.index).map((x) => x.invoice?.number).filter(Boolean).join(', ');
+    if (m.kind === 'additional') {
+      // Extra work is billed as an ordinary tax invoice. It does not touch the agreed advances.
+      const query = new URLSearchParams({
+        clientId: data.client.id,
+        milestoneId: m.id,
+        type: 'regular',
+        project: data.title,
+        amount: String(m.baseMinor / 100),
+        line: m.title,
+        ref: `Additional scope under agreement${data.agreement ? `: ${data.agreement.title}` : ''}`,
+      });
+      return `/invoices/gst/new?${query.toString()}`;
+    }
+    const position = agreed.findIndex((x) => x.id === m.id);
+    const plan = invoicePlan(parts, position);
+    const before = agreed.slice(0, position).map((x) => x.invoice?.number).filter(Boolean).join(', ');
     const query = new URLSearchParams({
       clientId: data.client.id,
       milestoneId: m.id,
@@ -108,6 +130,33 @@ export function ProjectDetailPage() {
       advanceRef: plan.docType === 'final' ? before : '',
     });
     return `/invoices/gst/new?${query.toString()}`;
+  };
+
+  const addExtra = async () => {
+    setSaving(true);
+    setError('');
+    const response = await fetch(`/api/projects/${projectId}/milestones`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: extra.title, trigger: extra.trigger, amountRupees: Number(extra.amount.replace(/,/g, '')) || 0, dueOn: extra.dueOn || null, status: extra.status }),
+    });
+    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+    setSaving(false);
+    if (!response.ok) setError(payload?.error ?? 'Could not add it.');
+    else {
+      setAdding(false);
+      setExtra({ title: '', trigger: '', amount: '', dueOn: '', status: 'planned' });
+      setNote('Additional charge added.');
+      await load();
+    }
+  };
+
+  const removeExtra = async (m: Milestone) => {
+    if (!window.confirm(`Remove "${m.title}"? This cannot be undone.`)) return;
+    const response = await fetch(`/api/projects/${projectId}/milestones/${m.id}`, { method: 'DELETE' });
+    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+    if (!response.ok) setError(payload?.error ?? 'Could not remove it.');
+    else await load();
   };
 
   const updateRoadmap = (id: string, change: Partial<RoadmapItem>) => setRoadmap((list) => list.map((item) => (item.id === id ? { ...item, ...change } : item)));
@@ -133,9 +182,9 @@ export function ProjectDetailPage() {
       {note ? <p className="bk-ok">{note}</p> : null}
 
       <section className="metric-grid">
-        <MetricCard icon={FileSignature} label="Project value" value={inr(total)} detail="Before GST, across all milestones" />
-        <MetricCard icon={FileText} label="Invoiced so far" value={inr(invoicedMinor)} detail={`${data.milestones.filter((m) => m.invoice && !m.invoice.cancelled).length} of ${data.milestones.length} milestones invoiced`} />
-        <MetricCard icon={Check} label="Milestones accepted" value={`${data.milestones.filter((m) => m.status === 'accepted').length} of ${data.milestones.length}`} detail="Marked accepted by the client" />
+        <MetricCard icon={FileSignature} label="Project value" value={inr(total)} detail={additionalTotal > 0 ? `Agreed, plus ${inr(additionalTotal)} additional` : 'Before GST, across all milestones'} />
+        <MetricCard icon={FileText} label="Invoiced so far" value={inr(invoicedMinor)} detail={`${data.milestones.filter((m) => m.invoice && !m.invoice.cancelled).length} of ${data.milestones.length} invoices raised`} />
+        <MetricCard icon={Check} label="Milestones accepted" value={`${agreed.filter((m) => m.status === 'accepted').length} of ${agreed.length}`} detail="Marked accepted by the client" />
         <MetricCard icon={CalendarClock} label="Timeline" value={`${ongoing.length} ongoing`} detail={`${upcoming.length} upcoming · ${done.length} done`} />
       </section>
 
@@ -145,9 +194,9 @@ export function ProjectDetailPage() {
           {data.milestones.map((m) => (
             <li key={m.id} className="bk-ms-card">
               <div className="bk-grow">
-                <p><b>{m.title}</b> <span className={`bk-chip bk-tone-${m.status === 'accepted' ? 'green' : m.status === 'delivered' ? 'blue' : m.status === 'in_progress' ? 'amber' : 'violet'}`}>{M_STATUS[m.status]}</span></p>
+                <p><b>{m.title}</b> {m.kind === 'additional' ? <span className="bk-chip bk-tone-violet">Additional</span> : null} <span className={`bk-chip bk-tone-${m.status === 'accepted' ? 'green' : m.status === 'delivered' ? 'blue' : m.status === 'in_progress' ? 'amber' : 'violet'}`}>{M_STATUS[m.status]}</span></p>
                 {m.trigger ? <p className="bk-sub">{m.trigger}</p> : null}
-                <p className="bk-sub">{inr(m.baseMinor)} + GST = <b>{inr(m.grossMinor)}</b>{m.dueOn ? ` · due ${day(m.dueOn)}` : ''}</p>
+                <p className="bk-sub">{inr(m.baseMinor)} + GST {inr(gstOf(m.baseMinor, data.gstRatePct))} = <b>{inr(m.grossMinor)}</b>{m.dueOn ? ` · due ${day(m.dueOn)}` : ''}</p>
               </div>
               <select value={m.status} onChange={(event) => void patchMilestone(m.id, { status: event.target.value })} aria-label={`Status of ${m.title}`}>
                 {Object.entries(M_STATUS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -157,10 +206,33 @@ export function ProjectDetailPage() {
               ) : (
                 <Link to={invoiceLink(m)} className="btn btn-primary"><FilePlus2 size={15} aria-hidden="true" /> Create invoice</Link>
               )}
+              {m.kind === 'additional' && !m.invoice ? <button type="button" className="bk-iconbtn" aria-label={`Remove ${m.title}`} onClick={() => void removeExtra(m)}><Trash2 size={15} /></button> : null}
             </li>
           ))}
         </ul>
-        <p className="bk-note">The first milestones become advance requests and the last one becomes the final invoice, which adjusts what was already billed. You can change the type in the invoice form.</p>
+        {adding ? (
+          <div className="bk-extra">
+            <h4 className="bk-subhead">Additional charge</h4>
+            <div className="bk-form">
+              <label className="bk-wide">What is the extra work?<input value={extra.title} onChange={(event) => setExtra({ ...extra, title: event.target.value })} placeholder="e.g. Additional scope: B2B features, new themes and functions" /></label>
+              <label className="bk-wide">Details<textarea rows={3} value={extra.trigger} onChange={(event) => setExtra({ ...extra, trigger: event.target.value })} placeholder="What was agreed, when the client approved it and when it will be billed" /></label>
+              <label>Amount before GST (₹)<input inputMode="decimal" value={extra.amount} onChange={(event) => setExtra({ ...extra, amount: event.target.value })} placeholder="e.g. 21001" /></label>
+              <label>Status
+                <select value={extra.status} onChange={(event) => setExtra({ ...extra, status: event.target.value as Milestone['status'] })}>
+                  {Object.entries(M_STATUS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
+              </label>
+            </div>
+            {Number(extra.amount) > 0 ? <p className="bk-total">GST {data.gstRatePct}%: <b>{inr(gstOf(Math.round(Number(extra.amount.replace(/,/g, '')) * 100), data.gstRatePct))}</b> · total <b>{inr(Math.round(Number(extra.amount.replace(/,/g, '')) * 100) + gstOf(Math.round(Number(extra.amount.replace(/,/g, '')) * 100), data.gstRatePct))}</b></p> : null}
+            <div className="bk-row-actions">
+              <button type="button" className="btn btn-primary" disabled={saving || !extra.title.trim() || !(Number(extra.amount) > 0)} onClick={() => void addExtra()}><Check size={15} aria-hidden="true" /> Add charge</button>
+              <button type="button" className="btn btn-secondary" onClick={() => setAdding(false)}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <div className="bk-row-actions"><button type="button" className="btn btn-secondary" onClick={() => setAdding(true)}><Plus size={15} aria-hidden="true" /> Add additional charge</button></div>
+        )}
+        <p className="bk-note">The agreed milestones start as advance requests and the last one becomes the final invoice, which adjusts what was already billed. An additional charge is billed as its own ordinary tax invoice. You can change the type in the invoice form.</p>
       </section>
 
       <section className="card section-card">

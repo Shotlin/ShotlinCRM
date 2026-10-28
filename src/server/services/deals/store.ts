@@ -300,6 +300,45 @@ export async function updateMilestone(workspaceId: string, projectId: string, mi
   if (result.length === 0) throw new Error('Milestone not found');
 }
 
+export const additionalChargeSchema = z.object({
+  title: z.string().trim().min(1, 'Say what the extra work is').max(300),
+  trigger: z.string().trim().max(600).default(''),
+  amountRupees: z.number().positive('Enter the amount before GST'),
+  dueOn: date.nullable().optional(),
+  status: z.enum(['planned', 'in_progress', 'delivered', 'accepted']).default('planned'),
+});
+
+// Extra work on top of the agreement, billed as its own milestone after the agreed ones.
+export async function addAdditionalCharge(workspaceId: string, projectId: string, input: z.infer<typeof additionalChargeSchema>) {
+  const [project] = await db.select({ id: projects.id, agreementId: projects.agreementId }).from(projects).where(and(eq(projects.id, projectId), eq(projects.workspaceId, workspaceId))).limit(1);
+  if (!project) throw new Error('Project not found');
+  const existing = await db.select().from(projectMilestones).where(eq(projectMilestones.projectId, projectId));
+  const agreedBase = existing.filter((m) => m.kind === 'agreed').reduce((sum, m) => sum + m.baseMinor, 0);
+  const id = `milestone-${randomUUID()}`;
+  await db.insert(projectMilestones).values({
+    id,
+    workspaceId,
+    projectId,
+    position: existing.reduce((max, m) => Math.max(max, m.position), -1) + 1,
+    kind: 'additional',
+    title: input.title,
+    trigger: input.trigger,
+    shareBp: shareBp(toPaise(input.amountRupees), agreedBase),
+    baseMinor: toPaise(input.amountRupees),
+    dueOn: input.dueOn ? atIst(input.dueOn) : null,
+    status: input.status,
+  });
+  return id;
+}
+
+export async function removeAdditionalCharge(workspaceId: string, projectId: string, milestoneId: string) {
+  const [row] = await db.select().from(projectMilestones).where(and(eq(projectMilestones.id, milestoneId), eq(projectMilestones.projectId, projectId), eq(projectMilestones.workspaceId, workspaceId))).limit(1);
+  if (!row) throw new Error('Not found');
+  if (row.kind !== 'additional') throw new Error('Only an additional charge can be removed');
+  if (row.invoiceId) throw new Error('An invoice was raised for this, so it cannot be removed');
+  await db.delete(projectMilestones).where(eq(projectMilestones.id, milestoneId));
+}
+
 export async function linkMilestoneInvoice(workspaceId: string, milestoneId: string, invoiceId: string) {
   await db
     .update(projectMilestones)
@@ -372,6 +411,7 @@ export async function getProjectDetail(workspaceId: string, id: string) {
       return {
         id: m.id,
         index,
+        kind: m.kind as 'agreed' | 'additional',
         title: m.title,
         trigger: m.trigger,
         baseMinor: m.baseMinor,

@@ -93,7 +93,7 @@ export default async function SharedProject({ params }: { params: Promise<{ toke
           {project.milestones.map((m) => (
             <li key={m.title}>
               <div>
-                <p><b>{m.title}</b></p>
+                <p><b>{m.title}</b>{m.additional ? <span className="sh-tag">Additional scope</span> : null}</p>
                 {m.trigger ? <p className="sh-sub">{m.trigger}</p> : null}
                 <p className="sh-sub">{MILESTONE[m.status]}{m.dueOn ? ` · due ${day(m.dueOn)}` : ''}</p>
               </div>
