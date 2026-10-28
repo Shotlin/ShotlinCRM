@@ -46,7 +46,7 @@ export function SharePanel({ kind, targetId }: { kind: 'project'; targetId: stri
   };
 
   return (
-    <section className="bk-card">
+    <section className="card section-card">
       <h3><Link2 size={17} aria-hidden="true" /> Client link</h3>
       <p className="bk-note bk-note-top">
         <ShieldCheck size={14} aria-hidden="true" /> A private page for your client, with no login. It shows the brief, timeline, milestones, the signed agreement and the invoices of this project, and nothing else.
@@ -72,17 +72,17 @@ export function SharePanel({ kind, targetId }: { kind: 'project'; targetId: stri
         </div>
       ) : null}
       {links.length > 0 ? (
-        <div className="bk-table-wrap">
-          <table className="bk-table">
-            <thead><tr><th>For</th><th>Created</th><th>Valid until</th><th className="num">Opened</th><th /></tr></thead>
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead><tr><th>For</th><th>Created</th><th>Valid until</th><th className="numeric">Opened</th><th /></tr></thead>
             <tbody>
               {links.map((link) => (
                 <tr key={link.id}>
                   <td>{link.label || 'Client link'} {link.revoked ? <span className="bk-chip bk-tone-red">Stopped</span> : link.expired ? <span className="bk-chip bk-tone-amber">Expired</span> : <span className="bk-chip bk-tone-green">Working</span>}</td>
                   <td>{day(link.createdAt.slice(0, 10))}</td>
                   <td>{day(link.expiresAt.slice(0, 10))}</td>
-                  <td className="num">{link.viewCount}{link.lastViewedAt ? ` · last ${day(link.lastViewedAt.slice(0, 10))}` : ''}</td>
-                  <td className="num">{!link.revoked && !link.expired ? <button type="button" className="bk-iconbtn" aria-label="Stop this link" onClick={() => void revoke(link.id)}><Trash2 size={15} /></button> : null}</td>
+                  <td className="numeric">{link.viewCount}{link.lastViewedAt ? ` · last ${day(link.lastViewedAt.slice(0, 10))}` : ''}</td>
+                  <td className="numeric">{!link.revoked && !link.expired ? <button type="button" className="bk-iconbtn" aria-label="Stop this link" onClick={() => void revoke(link.id)}><Trash2 size={15} /></button> : null}</td>
                 </tr>
               ))}
             </tbody>

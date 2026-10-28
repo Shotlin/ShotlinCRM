@@ -244,23 +244,23 @@
 .gst-numbering {
   margin-bottom: 18px;
   padding: 14px 15px;
-  border: 1px solid #d9d4ff;
+  border: 1px solid var(--line);
   border-radius: 12px;
-  background: linear-gradient(180deg, #f6f4ff, #fff);
+  background: var(--soft);
 }
-.gst-numbering h3 { display: flex; align-items: center; gap: 7px; margin: 0 0 8px; font-size: 14px; color: #4a2bd8; }
+.gst-numbering h3 { display: flex; align-items: center; gap: 7px; margin: 0 0 8px; font-size: 14px; color: var(--ink); }
 .gst-numbering p { margin: 0 0 6px; font-size: 13px; line-height: 1.45; }
 .gst-numbering-sub { color: var(--muted); font-size: 12.5px; }
 .gst-numbering-off { border-color: var(--line); background: var(--soft); }
 .gst-numbering-off h3 { color: var(--muted); }
-.gst-sim { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: #fff; border: 1px solid #e6e2ff; }
-.gst-sim-title { display: flex; align-items: center; gap: 6px; margin: 0 0 6px !important; font-size: 12px !important; font-weight: 600; color: #4a2bd8; text-transform: uppercase; letter-spacing: 0.04em; }
+.gst-sim { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: #fff; border: 1px solid var(--line); }
+.gst-sim-title { display: flex; align-items: center; gap: 6px; margin: 0 0 6px !important; font-size: 12px !important; font-weight: 600; color: var(--ink); text-transform: uppercase; letter-spacing: 0.04em; }
 .gst-sim ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.gst-sim li { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 6px 8px; border-radius: 8px; background: #f6f4ff; }
-.gst-sim li:last-child { background: #fff3dc; }
+.gst-sim li { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 6px 8px; border-radius: 8px; background: var(--soft); }
+.gst-sim li:last-child { background: var(--amber-bg); }
 .gst-waiting { margin-top: 10px; }
 .gst-waiting ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.gst-waiting li { display: flex; flex-direction: column; font-size: 13px; padding: 7px 9px; border-radius: 8px; background: #fff3dc; }
+.gst-waiting li { display: flex; flex-direction: column; font-size: 13px; padding: 7px 9px; border-radius: 8px; background: var(--amber-bg); }
 
 /* ---- live preview, drawn like the paper invoice */
 .gst-preview-card { margin-top: 18px; }
@@ -270,7 +270,7 @@
 .gst-paper-brand b { font-size: 22px; letter-spacing: 0.06em; }
 .gst-paper-brand p { font-size: 11px; color: #444; }
 .gst-paper-title { text-align: right; }
-.gst-paper-title h3 { margin: 0; font-size: 20px; letter-spacing: 0.04em; color: #4a2bd8; }
+.gst-paper-title h3 { margin: 0; font-size: 20px; letter-spacing: 0.04em; color: var(--ink); }
 .gst-paper-title p { font-size: 11px; color: #555; }
 .gst-paper-no b { font-size: 13px; color: #111; }
 .gst-paper-meta, .gst-paper-items { width: 100%; border-collapse: collapse; margin-top: 12px; }
@@ -278,7 +278,7 @@
 .gst-paper-meta td, .gst-paper-items td { padding: 7px 8px; border-bottom: 1px solid #ddd; vertical-align: top; }
 .gst-paper-items td span { display: block; margin-top: 2px; color: #555; font-size: 11px; }
 .gst-paper-two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 14px; }
-.gst-paper h4 { margin: 0 0 5px; font-size: 11px; letter-spacing: 0.06em; color: #4a2bd8; }
+.gst-paper h4 { margin: 0 0 5px; font-size: 11px; letter-spacing: 0.06em; color: var(--ink); }
 .gst-paper-lower { align-items: start; }
 .gst-paper-totals { margin: 0; }
 .gst-paper-totals div { display: flex; justify-content: space-between; gap: 10px; padding: 5px 8px; border-bottom: 1px solid #e5e5e5; }

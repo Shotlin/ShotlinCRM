@@ -2,10 +2,9 @@
 
 import {
   AlertOctagon,
-  ArrowDownRight,
-  ArrowUpRight,
   BellRing,
   CalendarClock,
+  Check,
   ChevronLeft,
   ChevronRight,
   Landmark,
@@ -21,6 +20,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { MetricCard } from '@/components/ui/MetricCard';
 import { EXPENSE_CATEGORIES, PAYEE_TYPES, categoryOf } from '@/server/services/expenses/categories';
 import type { ExpenseRow, ExpenseSummary } from '@/server/services/expenses/summary';
 import { day, inr, monthName } from '../gst/format';
@@ -149,9 +149,9 @@ export function ExpensesPage() {
   const set = <K extends keyof Form>(key: K, value: Form[K]) => setForm((f) => (f ? { ...f, [key]: value } : f));
 
   return (
-    <div className="bk-page">
+    <div className="page">
       <PageHeader
-        eyebrow="Money out"
+        eyebrow="12 / Expenses"
         title="Expenses"
         description="Bills, subscriptions, salaries, ads, loans and surprise purchases. Who you paid, how much, and when."
         actions={
@@ -165,35 +165,29 @@ export function ExpensesPage() {
         !error ? <p className="bk-loading"><LoaderCircle className="spin" size={18} aria-hidden="true" /> Loading expenses…</p> : null
       ) : (
         <>
-          <section className="bk-hero bk-hero-expense">
-            <div>
-              <div className="bk-monthpick">
-                <button type="button" aria-label="Previous month" onClick={() => setMonth(shift(month, -1))}><ChevronLeft size={18} /></button>
-                <span>{monthName(month)}</span>
-                <button type="button" aria-label="Next month" onClick={() => setMonth(shift(month, 1))} disabled={month >= data.currentMonth}><ChevronRight size={18} /></button>
-              </div>
-              <p className="bk-hero-title">Spent this month</p>
-              <p className="bk-hero-number">{inr(summary.totalMinor)}</p>
-              <p className="bk-hero-sub">
-                {summary.count} entr{summary.count === 1 ? 'y' : 'ies'} ·{' '}
-                {delta === 0 ? 'same as last month' : (
-                  <span className={delta > 0 ? 'bk-up' : 'bk-down'}>
-                    {delta > 0 ? <ArrowUpRight size={14} aria-hidden="true" /> : <ArrowDownRight size={14} aria-hidden="true" />}
-                    {inr(Math.abs(delta))} {delta > 0 ? 'more' : 'less'} than last month
-                  </span>
-                )}
-              </p>
+          <div className="bk-toolbar">
+            <div className="bk-monthpick">
+              <button type="button" className="bk-iconbtn" aria-label="Previous month" onClick={() => setMonth(shift(month, -1))}><ChevronLeft size={16} /></button>
+              <span>{monthName(month)}</span>
+              <button type="button" className="bk-iconbtn" aria-label="Next month" onClick={() => setMonth(shift(month, 1))} disabled={month >= data.currentMonth}><ChevronRight size={16} /></button>
             </div>
-          </section>
-
-          <div className="bk-stats">
-            <div className="bk-stat bk-tone-green"><span className="bk-stat-icon"><Wallet size={18} aria-hidden="true" /></span><div><p className="bk-stat-label">Planned</p><p className="bk-stat-value">{inr(summary.plannedMinor)}</p><p className="bk-stat-hint">Normal monthly spending</p></div></div>
-            <div className="bk-stat bk-tone-red"><span className="bk-stat-icon"><AlertOctagon size={18} aria-hidden="true" /></span><div><p className="bk-stat-label">Unplanned</p><p className="bk-stat-value">{inr(summary.unplannedMinor)}</p><p className="bk-stat-hint">Surprise and emergency spending</p></div></div>
-            <div className="bk-stat bk-tone-indigo"><span className="bk-stat-icon"><Landmark size={18} aria-hidden="true" /></span><div><p className="bk-stat-label">GST paid on bills</p><p className="bk-stat-value">{inr(summary.gstMinor)}</p><p className="bk-stat-hint">Eligible GST lowers your GST payable</p></div></div>
           </div>
 
+          <section className="metric-grid">
+            <MetricCard
+              icon={Wallet}
+              label="Spent this month"
+              value={inr(summary.totalMinor)}
+              detail={`${summary.count} entr${summary.count === 1 ? 'y' : 'ies'}`}
+              trend={delta === 0 ? undefined : { value: `${inr(Math.abs(delta))} ${delta > 0 ? 'more' : 'less'}`, direction: delta > 0 ? 'up' : 'down', good: delta <= 0 }}
+            />
+            <MetricCard icon={Check} label="Planned" value={inr(summary.plannedMinor)} detail="Normal monthly spending" />
+            <MetricCard icon={AlertOctagon} label="Unplanned" value={inr(summary.unplannedMinor)} detail="Surprise and emergency spending" />
+            <MetricCard icon={Landmark} label="GST paid on bills" value={inr(summary.gstMinor)} detail="Eligible GST lowers your GST payable" />
+          </section>
+
           {summary.dueThisMonth.length > 0 ? (
-            <section className="bk-card bk-card-warn">
+            <section className="card section-card bk-tint-warn">
               <h3><BellRing size={17} aria-hidden="true" /> Repeating bills not entered this month</h3>
               <ul className="bk-list">
                 {summary.dueThisMonth.map((d) => (
@@ -216,25 +210,25 @@ export function ExpensesPage() {
             </section>
           ) : null}
 
-          <section className="bk-card">
+          <section className="card section-card">
             <h3><CalendarClock size={17} aria-hidden="true" /> Last 12 months</h3>
             <div className="bk-chart" aria-label="Monthly spending, planned and unplanned">
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={chart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e8e8ef" />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e6e6e1" />
                   <XAxis dataKey="name" tickLine={false} axisLine={false} fontSize={12} />
                   <YAxis tickLine={false} axisLine={false} fontSize={12} width={52} tickFormatter={(v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v))} />
                   <Tooltip formatter={(v) => `₹${Number(v).toLocaleString('en-IN')}`} />
-                  <Bar dataKey="Planned" stackId="a" fill="#6d4aff" radius={[0, 0, 0, 0]} />
-                  <Bar dataKey="Unplanned" stackId="a" fill="#e5484d" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Planned" stackId="a" fill="#151613" radius={[0, 0, 0, 0]} />
+                  <Bar dataKey="Unplanned" stackId="a" fill="#aa514a" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <p className="bk-legend"><i className="bk-dot" style={{ background: '#6d4aff' }} /> Planned <i className="bk-dot" style={{ background: '#e5484d' }} /> Unplanned</p>
+            <p className="bk-legend"><i className="bk-dot" style={{ background: '#151613' }} /> Planned <i className="bk-dot" style={{ background: '#aa514a' }} /> Unplanned</p>
           </section>
 
           <div className="bk-two">
-            <section className="bk-card">
+            <section className="card section-card">
               <h3><Wallet size={17} aria-hidden="true" /> Where the money went</h3>
               {summary.byCategory.length === 0 ? <p className="bk-empty">No expenses in {monthName(month)}.</p> : (
                 <ul className="bk-bars">
@@ -247,14 +241,14 @@ export function ExpensesPage() {
                 </ul>
               )}
             </section>
-            <section className="bk-card">
+            <section className="card section-card">
               <h3><UserRound size={17} aria-hidden="true" /> Who you paid</h3>
               {summary.byPayee.length === 0 ? <p className="bk-empty">Nobody paid yet this month.</p> : (
                 <ul className="bk-bars">
                   {summary.byPayee.map((p) => (
                     <li key={p.name}>
                       <div className="bk-bars-top"><span>{p.name} <small className="bk-sub">{PAYEE_TYPES.find((t) => t.id === p.type)?.label ?? ''}</small></span><b>{inr(p.totalMinor)}</b></div>
-                      <div className="bk-bar"><span style={{ width: `${Math.max(3, Math.round((p.totalMinor / biggestPayee) * 100))}%`, background: '#2f6fed' }} /></div>
+                      <div className="bk-bar"><span style={{ width: `${Math.max(3, Math.round((p.totalMinor / biggestPayee) * 100))}%`, background: '#526f93' }} /></div>
                     </li>
                   ))}
                 </ul>
@@ -262,12 +256,12 @@ export function ExpensesPage() {
             </section>
           </div>
 
-          <section className="bk-card">
+          <section className="card section-card">
             <h3><Wallet size={17} aria-hidden="true" /> Every entry in {monthName(month)}</h3>
             {data.entries.length === 0 ? <p className="bk-empty">Nothing yet. Use “Add expense” for your first one.</p> : (
-              <div className="bk-table-wrap">
-                <table className="bk-table">
-                  <thead><tr><th>Date</th><th>What</th><th>Paid to</th><th>Category</th><th className="num">Amount</th><th className="num">GST</th><th /></tr></thead>
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead><tr><th>Date</th><th>What</th><th>Paid to</th><th>Category</th><th className="numeric">Amount</th><th className="numeric">GST</th><th /></tr></thead>
                   <tbody>
                     {data.entries.map((e) => {
                       const c = categoryOf(e.category);
@@ -282,9 +276,9 @@ export function ExpensesPage() {
                           </td>
                           <td>{e.payeeName}</td>
                           <td><span className="bk-chip" style={{ background: `${c.color}1a`, color: c.color }}>{c.label}</span></td>
-                          <td className="num"><b>{inr(e.amountMinor)}</b></td>
-                          <td className="num">{e.gstMinor ? <>{inr(e.gstMinor)}{e.itcEligible ? ' ✓' : ''}</> : '–'}</td>
-                          <td className="num bk-actions">
+                          <td className="numeric"><b>{inr(e.amountMinor)}</b></td>
+                          <td className="numeric">{e.gstMinor ? <>{inr(e.gstMinor)}{e.itcEligible ? ' ✓' : ''}</> : '–'}</td>
+                          <td className="numeric bk-actions">
                             <button type="button" aria-label={`Edit ${e.title}`} onClick={() => edit(e)}><Pencil size={15} /></button>
                             <button type="button" aria-label={`Delete ${e.title}`} onClick={() => void remove(e)}><Trash2 size={15} /></button>
                           </td>

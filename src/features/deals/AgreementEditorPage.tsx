@@ -239,20 +239,23 @@ export function AgreementEditorPage() {
     else setError(payload?.error ?? 'Could not delete.');
   };
 
-  if (loading) return <div className="bk-page"><p className="bk-loading"><LoaderCircle className="spin" size={18} aria-hidden="true" /> Loading…</p></div>;
+  if (loading) return <div className="page editor-page"><p className="bk-loading"><LoaderCircle className="spin" size={18} aria-hidden="true" /> Loading…</p></div>;
 
   const fileLabel = pending?.name ?? loaded?.fileName ?? null;
   const people = [...leads, ...chats].filter((lead) => lead.name);
 
   return (
-    <div className="bk-page">
-      <Link to="/agreements" className="back-link"><ArrowLeft size={15} aria-hidden="true" /> Proposals &amp; agreements</Link>
-      <header className="bk-titlebar">
+    <div className="page editor-page">
+      <div className="editor-topbar">
+        <Link to="/agreements" className="back-link"><ArrowLeft size={15} aria-hidden="true" /> Proposals &amp; agreements</Link>
+        <span className="eyebrow">{form.kind === 'agreement' ? 'Agreement' : 'Proposal'}</span>
+      </div>
+      <div className="editor-title-row">
         <div>
-          <p className="eyebrow">{form.kind === 'agreement' ? 'Agreement' : 'Proposal'}</p>
           <h1>{isNew ? `Upload ${form.kind}` : form.title || 'Untitled'}</h1>
+          <p>{isNew ? 'Upload the PDF you wrote, then set the cost and payment milestones.' : 'Keep the cost and milestones in step with the PDF.'}</p>
         </div>
-        <div className="bk-titleactions">
+        <div className="editor-top-actions">
           {loaded?.hasFile ? (
             <a className="btn btn-secondary" href={`/api/agreements/${loaded.id}/file`} target="_blank" rel="noreferrer"><Download size={15} aria-hidden="true" /> View PDF</a>
           ) : null}
@@ -263,13 +266,13 @@ export function AgreementEditorPage() {
             {busy === 'save' ? <LoaderCircle className="spin" size={15} aria-hidden="true" /> : <Check size={15} aria-hidden="true" />} Save
           </button>
         </div>
-      </header>
+      </div>
 
       {error ? <p className="bk-error" role="alert">{error}</p> : null}
       {note ? <p className="bk-ok">{note}</p> : null}
 
       {loaded?.kind === 'agreement' ? (
-        <section className="bk-card bk-card-go">
+        <section className="card section-card bk-tint-go">
           <h3><FolderKanban size={17} aria-hidden="true" /> Project</h3>
           {loaded.projectId ? (
             <p>This agreement already started a project. <Link to={`/projects/${loaded.projectId}`} className="bk-link"><b>Open the project</b></Link></p>
@@ -286,7 +289,7 @@ export function AgreementEditorPage() {
         </section>
       ) : null}
 
-      <section className="bk-card">
+      <section className="card section-card">
         <h3><FileSignature size={17} aria-hidden="true" /> Details</h3>
         <div className="bk-form">
           <label>Type
@@ -323,7 +326,7 @@ export function AgreementEditorPage() {
         </div>
       </section>
 
-      <section className="bk-card">
+      <section className="card section-card">
         <h3><Upload size={17} aria-hidden="true" /> The PDF</h3>
         <div className="bk-drop">
           <input ref={fileInput} type="file" accept="application/pdf" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); event.target.value = ''; }} />
@@ -334,7 +337,7 @@ export function AgreementEditorPage() {
         </div>
       </section>
 
-      <section className="bk-card">
+      <section className="card section-card">
         <h3><Check size={17} aria-hidden="true" /> Cost and payment milestones</h3>
         <div className="bk-form">
           <label>Project cost before GST (₹)<input inputMode="decimal" value={form.base} onChange={(event) => set('base', event.target.value)} placeholder="e.g. 60000" disabled={locked} /></label>

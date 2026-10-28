@@ -45,9 +45,9 @@ export function AgreementsPage() {
   const shown = (deals ?? []).filter((deal) => filter === 'all' || deal.kind === filter);
 
   return (
-    <div className="bk-page">
+    <div className="page">
       <PageHeader
-        eyebrow="Deals"
+        eyebrow="13 / Agreements"
         title="Proposals & agreements"
         description="Upload the proposal or agreement you wrote, set the cost and the payment milestones, then start the project from it."
         actions={
@@ -62,9 +62,9 @@ export function AgreementsPage() {
         }
       />
       {error ? <p className="bk-error" role="alert">{error}</p> : null}
-      <div className="bk-tabs" role="tablist" aria-label="Filter">
+      <div className="underline-tabs" role="tablist" aria-label="Filter">
         {(['all', 'proposal', 'agreement'] as const).map((value) => (
-          <button key={value} type="button" role="tab" aria-selected={filter === value} className={filter === value ? 'on' : ''} onClick={() => setFilter(value)}>
+          <button key={value} type="button" role="tab" aria-selected={filter === value} className={filter === value ? 'active' : ''} onClick={() => setFilter(value)}>
             {value === 'all' ? 'All' : value === 'proposal' ? 'Proposals' : 'Agreements'}
           </button>
         ))}
@@ -72,15 +72,15 @@ export function AgreementsPage() {
       {!deals ? (
         !error ? <p className="bk-loading"><LoaderCircle className="spin" size={18} aria-hidden="true" /> Loading…</p> : null
       ) : shown.length === 0 ? (
-        <section className="bk-card">
+        <div className="card section-card">
           <p className="bk-empty">Nothing here yet. Upload your first proposal or agreement with the buttons above.</p>
-        </section>
+        </div>
       ) : (
-        <section className="bk-card">
-          <div className="bk-table-wrap">
-            <table className="bk-table">
+        <div className="card table-card">
+          <div className="table-wrap">
+            <table className="data-table">
               <thead>
-                <tr><th>Document</th><th>Client / lead</th><th>Status</th><th className="num">Cost before GST</th><th className="num">Total with GST</th><th>Project</th></tr>
+                <tr><th>Document</th><th>Client / lead</th><th>Status</th><th className="numeric">Cost before GST</th><th className="numeric">Total with GST</th><th>Project</th></tr>
               </thead>
               <tbody>
                 {shown.map((deal) => (
@@ -96,8 +96,8 @@ export function AgreementsPage() {
                     </td>
                     <td>{deal.party || '-'} {deal.isLead ? <span className="bk-chip bk-tone-amber">Lead</span> : null}</td>
                     <td><span className={`bk-chip bk-tone-${STATUS[deal.status]?.tone ?? 'violet'}`}>{STATUS[deal.status]?.label ?? deal.status}</span></td>
-                    <td className="num">{inr(deal.baseAmountMinor)}</td>
-                    <td className="num"><b>{inr(deal.totalMinor)}</b></td>
+                    <td className="numeric">{inr(deal.baseAmountMinor)}</td>
+                    <td className="numeric"><b>{inr(deal.totalMinor)}</b></td>
                     <td>
                       {deal.projectId ? (
                         <Link to={`/projects/${deal.projectId}`} className="bk-link"><FolderKanban size={14} aria-hidden="true" /> Open project</Link>
@@ -112,7 +112,7 @@ export function AgreementsPage() {
               </tbody>
             </table>
           </div>
-        </section>
+        </div>
       )}
     </div>
   );

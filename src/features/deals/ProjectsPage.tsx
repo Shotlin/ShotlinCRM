@@ -41,16 +41,16 @@ export function ProjectsPage() {
   }, []);
 
   return (
-    <div className="bk-page">
-      <PageHeader eyebrow="Delivery" title="Projects" description="Every project starts from a signed agreement. Track the brief, timeline, milestones and the invoice for each one." />
+    <div className="page">
+      <PageHeader eyebrow="14 / Projects" title="Projects" description="Every project starts from a signed agreement. Track the brief, timeline, milestones and the invoice for each one." />
       {error ? <p className="bk-error" role="alert">{error}</p> : null}
       {!projects ? (
         !error ? <p className="bk-loading"><LoaderCircle className="spin" size={18} aria-hidden="true" /> Loading…</p> : null
       ) : projects.length === 0 ? (
-        <section className="bk-card">
+        <div className="card section-card">
           <p className="bk-empty">No projects yet. Open an agreement and press “Create project”.</p>
-          <Link to="/agreements" className="btn btn-primary">Go to agreements</Link>
-        </section>
+          <div className="bk-row-actions"><Link to="/agreements" className="btn btn-primary">Go to agreements</Link></div>
+        </div>
       ) : (
         <div className="bk-projects">
           {projects.map((project) => {
@@ -63,7 +63,7 @@ export function ProjectsPage() {
                 </div>
                 <h3>{project.title}</h3>
                 <p className="bk-sub">{project.client}</p>
-                <div className="bk-bar"><span style={{ width: `${Math.max(percent, 3)}%`, background: '#5b3df5' }} /></div>
+                <div className="bk-bar"><span style={{ width: `${Math.max(percent, 3)}%`, background: 'var(--ink)' }} /></div>
                 <p className="bk-sub">{project.milestonesAccepted} of {project.milestonesTotal} milestones accepted · {inr(project.invoicedMinor)} of {inr(project.totalMinor)} invoiced</p>
                 {project.dueOn ? <p className="bk-sub"><CalendarClock size={13} aria-hidden="true" /> Due {day(project.dueOn)}</p> : null}
               </Link>

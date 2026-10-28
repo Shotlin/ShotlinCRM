@@ -2,6 +2,8 @@
 
 import { ArrowLeft, CalendarClock, Check, FilePlus2, FileSignature, FileText, LoaderCircle, Plus, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { MetricCard } from '@/components/ui/MetricCard';
 import { Link, useParams } from '@/lib/router';
 import { invoicePlan } from '@/server/services/deals/milestones';
 import { day, inr } from '../gst/format';
@@ -81,7 +83,7 @@ export function ProjectDetailPage() {
     else await load();
   };
 
-  if (!data) return <div className="bk-page">{error ? <p className="bk-error" role="alert">{error}</p> : <p className="bk-loading"><LoaderCircle className="spin" size={18} aria-hidden="true" /> Loading…</p>}</div>;
+  if (!data) return <div className="page">{error ? <p className="bk-error" role="alert">{error}</p> : <p className="bk-loading"><LoaderCircle className="spin" size={18} aria-hidden="true" /> Loading…</p>}</div>;
 
   const parts = data.milestones.map((m) => m.baseMinor);
   const total = parts.reduce((a, b) => a + b, 0);
@@ -111,33 +113,33 @@ export function ProjectDetailPage() {
   const updateRoadmap = (id: string, change: Partial<RoadmapItem>) => setRoadmap((list) => list.map((item) => (item.id === id ? { ...item, ...change } : item)));
 
   return (
-    <div className="bk-page">
+    <div className="page">
       <Link to="/projects" className="back-link"><ArrowLeft size={15} aria-hidden="true" /> Projects</Link>
-      <section className="bk-hero bk-hero-project">
-        <div>
-          <p className="bk-hero-kicker">{data.client.company || data.client.name}</p>
-          <p className="bk-hero-number bk-hero-title2">{data.title}</p>
-          <p className="bk-hero-sub">
-            {data.startsOn ? `Kickoff ${day(data.startsOn)} · ` : ''}Due {day(data.dueOn)} · {inr(invoicedMinor)} of {inr(total)} invoiced
-          </p>
-        </div>
-        <label className="bk-year">Status
-          <select value={data.status} onChange={(event) => void patch({ status: event.target.value }, 'Status updated.')}>
-            {Object.entries(PROJECT_STATUS).map(([value, item]) => <option key={value} value={value}>{item.label}</option>)}
-          </select>
-        </label>
-      </section>
+      <PageHeader
+        eyebrow="14 / Project"
+        title={data.title}
+        description={`${data.client.company || data.client.name}${data.startsOn ? ` · kickoff ${day(data.startsOn)}` : ''} · due ${day(data.dueOn)}`}
+        actions={
+          <label className="bk-select">
+            Status
+            <select value={data.status} onChange={(event) => void patch({ status: event.target.value }, 'Status updated.')}>
+              {Object.entries(PROJECT_STATUS).map(([value, item]) => <option key={value} value={value}>{item.label}</option>)}
+            </select>
+          </label>
+        }
+      />
 
       {error ? <p className="bk-error" role="alert">{error}</p> : null}
       {note ? <p className="bk-ok">{note}</p> : null}
 
-      <div className="bk-stats">
-        <div className="bk-stat bk-tone-green"><span className="bk-stat-icon"><Check size={18} aria-hidden="true" /></span><div><p className="bk-stat-label">Done</p><p className="bk-stat-value">{done.length}</p></div></div>
-        <div className="bk-stat bk-tone-amber"><span className="bk-stat-icon"><LoaderCircle size={18} aria-hidden="true" /></span><div><p className="bk-stat-label">Ongoing</p><p className="bk-stat-value">{ongoing.length}</p></div></div>
-        <div className="bk-stat bk-tone-indigo"><span className="bk-stat-icon"><CalendarClock size={18} aria-hidden="true" /></span><div><p className="bk-stat-label">Upcoming</p><p className="bk-stat-value">{upcoming.length}</p></div></div>
-      </div>
+      <section className="metric-grid">
+        <MetricCard icon={FileSignature} label="Project value" value={inr(total)} detail="Before GST, across all milestones" />
+        <MetricCard icon={FileText} label="Invoiced so far" value={inr(invoicedMinor)} detail={`${data.milestones.filter((m) => m.invoice && !m.invoice.cancelled).length} of ${data.milestones.length} milestones invoiced`} />
+        <MetricCard icon={Check} label="Milestones accepted" value={`${data.milestones.filter((m) => m.status === 'accepted').length} of ${data.milestones.length}`} detail="Marked accepted by the client" />
+        <MetricCard icon={CalendarClock} label="Timeline" value={`${ongoing.length} ongoing`} detail={`${upcoming.length} upcoming · ${done.length} done`} />
+      </section>
 
-      <section className="bk-card">
+      <section className="card section-card">
         <h3><FileSignature size={17} aria-hidden="true" /> Payment milestones</h3>
         <ul className="bk-list">
           {data.milestones.map((m) => (
@@ -161,7 +163,7 @@ export function ProjectDetailPage() {
         <p className="bk-note">The first milestones become advance requests and the last one becomes the final invoice, which adjusts what was already billed. You can change the type in the invoice form.</p>
       </section>
 
-      <section className="bk-card">
+      <section className="card section-card">
         <h3><CalendarClock size={17} aria-hidden="true" /> Timeline</h3>
         {roadmap.length === 0 ? <p className="bk-empty">No timeline yet. Add the blocks of work, for example “Week 1: Discovery”.</p> : null}
         <div className="bk-road">
@@ -183,7 +185,7 @@ export function ProjectDetailPage() {
         </div>
       </section>
 
-      <section className="bk-card">
+      <section className="card section-card">
         <h3><FileText size={17} aria-hidden="true" /> Project brief</h3>
         <textarea className="bk-textarea" rows={6} value={brief} onChange={(event) => setBrief(event.target.value)} placeholder="What is being built, scope in short, anything the team and the client should keep in mind." />
         <div className="bk-row-actions">

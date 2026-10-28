@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { MetricCard } from '@/components/ui/MetricCard';
 import type { Bucket, GstReport, QuarterReport } from '@/server/services/gst/report';
 import { day, inr } from './format';
 
@@ -29,19 +30,6 @@ const STATE_LABEL = { past: 'Finished', current: 'Running now', upcoming: 'Not s
 const DOC_LABEL = { advance: 'Advance', final: 'Final', regular: 'Regular' } as const;
 
 const share = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 100) : 0);
-
-function Stat({ icon: Icon, label, value, hint, tone }: { icon: typeof Landmark; label: string; value: string; hint?: string; tone: string }) {
-  return (
-    <div className={`bk-stat bk-tone-${tone}`}>
-      <span className="bk-stat-icon"><Icon size={18} strokeWidth={1.9} aria-hidden="true" /></span>
-      <div>
-        <p className="bk-stat-label">{label}</p>
-        <p className="bk-stat-value">{value}</p>
-        {hint ? <p className="bk-stat-hint">{hint}</p> : null}
-      </div>
-    </div>
-  );
-}
 
 function SplitBar({ left, right, leftLabel, rightLabel, leftTone, rightTone }: { left: Bucket; right: Bucket; leftLabel: string; rightLabel: string; leftTone: string; rightTone: string }) {
   const total = left.taxableMinor + right.taxableMinor;
@@ -71,38 +59,38 @@ function QuarterDetail({ q, report }: { q: QuarterReport; report: GstReport }) {
 
   return (
     <div className="bk-detail">
-      <div className="bk-stats">
-        <Stat icon={BadgeIndianRupee} tone="indigo" label="Taxable sales" value={inr(q.total.taxableMinor)} hint={`${q.total.count} document${q.total.count === 1 ? '' : 's'} counted`} />
-        <Stat icon={Landmark} tone="amber" label="GST collected (output)" value={inr(q.total.taxMinor)} hint={gstSplit || 'No tax this quarter'} />
-        <Stat icon={PiggyBank} tone="green" label="Input credit (from expenses)" value={inr(q.itcMinor)} hint={q.creditBroughtMinor > 0 ? `Plus ${inr(q.creditBroughtMinor)} carried from before` : q.creditLeftMinor > 0 ? `${inr(q.creditLeftMinor)} left over, carries to next quarter` : 'GST on bills marked eligible'} />
-        <Stat icon={Banknote} tone="red" label="GST to pay" value={inr(q.netPayableMinor)} hint={q.state === 'past' ? 'Finished quarter' : 'So far this quarter'} />
-      </div>
+      <section className="metric-grid">
+        <MetricCard icon={BadgeIndianRupee} label="Taxable sales" value={inr(q.total.taxableMinor)} detail={`${q.total.count} document${q.total.count === 1 ? '' : 's'} counted`} />
+        <MetricCard icon={Landmark} label="GST collected (output)" value={inr(q.total.taxMinor)} detail={gstSplit || 'No tax this quarter'} />
+        <MetricCard icon={PiggyBank} label="Input credit (from expenses)" value={inr(q.itcMinor)} detail={q.creditBroughtMinor > 0 ? `Plus ${inr(q.creditBroughtMinor)} carried from before` : q.creditLeftMinor > 0 ? `${inr(q.creditLeftMinor)} left over, carries on` : 'GST on bills marked eligible'} />
+        <MetricCard icon={Banknote} label="GST to pay" value={inr(q.netPayableMinor)} detail={q.state === 'past' ? 'Finished quarter' : 'So far this quarter'} />
+      </section>
 
-      <section className="bk-card">
+      <section className="card section-card">
         <h3><CalendarRange size={17} aria-hidden="true" /> Month by month</h3>
-        <div className="bk-table-wrap">
-          <table className="bk-table">
+        <div className="table-wrap">
+          <table className="data-table">
             <thead>
-              <tr><th>Month</th><th className="num">Taxable</th><th className="num">B2B</th><th className="num">B2C</th><th className="num">Advances</th><th className="num">GST</th></tr>
+              <tr><th>Month</th><th className="numeric">Taxable</th><th className="numeric">B2B</th><th className="numeric">B2C</th><th className="numeric">Advances</th><th className="numeric">GST</th></tr>
             </thead>
             <tbody>
               {q.months.map((m) => (
                 <tr key={m.key}>
                   <td><b>{m.label}</b></td>
-                  <td className="num">{inr(m.total.taxableMinor)}</td>
-                  <td className="num">{inr(m.b2b.taxableMinor)}</td>
-                  <td className="num">{inr(m.b2c.taxableMinor)}</td>
-                  <td className="num">{inr(m.advances.taxableMinor)}</td>
-                  <td className="num"><b>{inr(m.total.taxMinor)}</b></td>
+                  <td className="numeric">{inr(m.total.taxableMinor)}</td>
+                  <td className="numeric">{inr(m.b2b.taxableMinor)}</td>
+                  <td className="numeric">{inr(m.b2c.taxableMinor)}</td>
+                  <td className="numeric">{inr(m.advances.taxableMinor)}</td>
+                  <td className="numeric"><b>{inr(m.total.taxMinor)}</b></td>
                 </tr>
               ))}
               <tr className="bk-total-row">
                 <td>Quarter total</td>
-                <td className="num">{inr(q.total.taxableMinor)}</td>
-                <td className="num">{inr(q.b2b.taxableMinor)}</td>
-                <td className="num">{inr(q.b2c.taxableMinor)}</td>
-                <td className="num">{inr(q.advances.taxableMinor)}</td>
-                <td className="num">{inr(q.total.taxMinor)}</td>
+                <td className="numeric">{inr(q.total.taxableMinor)}</td>
+                <td className="numeric">{inr(q.b2b.taxableMinor)}</td>
+                <td className="numeric">{inr(q.b2c.taxableMinor)}</td>
+                <td className="numeric">{inr(q.advances.taxableMinor)}</td>
+                <td className="numeric">{inr(q.total.taxMinor)}</td>
               </tr>
             </tbody>
           </table>
@@ -110,19 +98,19 @@ function QuarterDetail({ q, report }: { q: QuarterReport; report: GstReport }) {
       </section>
 
       <div className="bk-two">
-        <section className="bk-card">
+        <section className="card section-card">
           <h3><Building2 size={17} aria-hidden="true" /> B2B and B2C</h3>
           <SplitBar left={q.b2b} right={q.b2c} leftLabel="B2B (has GSTIN)" rightLabel="B2C (no GSTIN)" leftTone="blue" rightTone="violet" />
           <p className="bk-note">B2B means the customer gave a GST number. A business without a GST number counts as B2C.</p>
         </section>
-        <section className="bk-card">
+        <section className="card section-card">
           <h3><ReceiptText size={17} aria-hidden="true" /> Advances and final bills</h3>
           <SplitBar left={q.advances} right={q.finals} leftLabel="Advance payments" rightLabel="Final / regular invoices" leftTone="amber" rightTone="green" />
           <p className="bk-note">GST on an advance is counted when the advance is received. The final invoice then taxes only the balance.</p>
         </section>
       </div>
 
-      <section className="bk-card">
+      <section className="card section-card">
         <h3><ArrowRightLeft size={17} aria-hidden="true" /> Advances adjusted this quarter</h3>
         {q.adjustments.length === 0 ? (
           <p className="bk-empty">No final invoice in this quarter adjusted an earlier advance.</p>
@@ -160,22 +148,22 @@ function QuarterDetail({ q, report }: { q: QuarterReport; report: GstReport }) {
         ) : null}
       </section>
 
-      <section className="bk-card">
+      <section className="card section-card">
         <h3><MapPin size={17} aria-hidden="true" /> By state (place of supply)</h3>
         {q.states.length === 0 ? (
           <p className="bk-empty">Nothing counted in this quarter yet.</p>
         ) : (
-          <div className="bk-table-wrap">
-            <table className="bk-table">
-              <thead><tr><th>State</th><th className="num">B2B taxable</th><th className="num">B2C taxable</th><th className="num">Total taxable</th><th className="num">GST</th></tr></thead>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead><tr><th>State</th><th className="numeric">B2B taxable</th><th className="numeric">B2C taxable</th><th className="numeric">Total taxable</th><th className="numeric">GST</th></tr></thead>
               <tbody>
                 {q.states.map((s) => (
                   <tr key={s.stateCode}>
                     <td><span className="bk-chip bk-tone-indigo">{s.stateCode}</span> <b>{s.stateName}</b></td>
-                    <td className="num">{inr(s.b2b.taxableMinor)}</td>
-                    <td className="num">{inr(s.b2c.taxableMinor)}</td>
-                    <td className="num">{inr(s.total.taxableMinor)}</td>
-                    <td className="num"><b>{inr(s.total.taxMinor)}</b></td>
+                    <td className="numeric">{inr(s.b2b.taxableMinor)}</td>
+                    <td className="numeric">{inr(s.b2c.taxableMinor)}</td>
+                    <td className="numeric">{inr(s.total.taxableMinor)}</td>
+                    <td className="numeric"><b>{inr(s.total.taxMinor)}</b></td>
                   </tr>
                 ))}
               </tbody>
@@ -184,14 +172,14 @@ function QuarterDetail({ q, report }: { q: QuarterReport; report: GstReport }) {
         )}
       </section>
 
-      <section className="bk-card">
+      <section className="card section-card">
         <h3><FileCheck2 size={17} aria-hidden="true" /> Documents counted in this quarter</h3>
         {q.docs.length === 0 ? (
           <p className="bk-empty">No documents counted yet.</p>
         ) : (
-          <div className="bk-table-wrap">
-            <table className="bk-table">
-              <thead><tr><th>Document</th><th>Counted on</th><th>Client</th><th>Type</th><th>State</th><th className="num">Taxable</th><th className="num">GST</th><th className="num">Total</th></tr></thead>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead><tr><th>Document</th><th>Counted on</th><th>Client</th><th>Type</th><th>State</th><th className="numeric">Taxable</th><th className="numeric">GST</th><th className="numeric">Total</th></tr></thead>
               <tbody>
                 {q.docs.map((d) => (
                   <tr key={d.docNo}>
@@ -200,9 +188,9 @@ function QuarterDetail({ q, report }: { q: QuarterReport; report: GstReport }) {
                     <td>{d.client} <span className={`bk-chip ${d.kind === 'B2B' ? 'bk-tone-blue' : 'bk-tone-violet'}`}>{d.kind}</span></td>
                     <td><span className={`bk-chip ${d.docType === 'advance' ? 'bk-tone-amber' : 'bk-tone-green'}`}>{DOC_LABEL[d.docType]}</span></td>
                     <td>{d.stateName}</td>
-                    <td className="num">{inr(d.taxableMinor)}</td>
-                    <td className="num">{inr(d.taxMinor)}</td>
-                    <td className="num">{inr(d.grossMinor)}</td>
+                    <td className="numeric">{inr(d.taxableMinor)}</td>
+                    <td className="numeric">{inr(d.taxMinor)}</td>
+                    <td className="numeric">{inr(d.grossMinor)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -212,7 +200,7 @@ function QuarterDetail({ q, report }: { q: QuarterReport; report: GstReport }) {
       </section>
 
       {excluded.length > 0 ? (
-        <section className="bk-card bk-card-warn">
+        <section className="card section-card bk-tint-warn">
           <h3><AlertTriangle size={17} aria-hidden="true" /> Not counted yet</h3>
           <p className="bk-note">These are left out of every total above until they are issued or the advance is received.</p>
           <ul className="bk-list">
@@ -257,30 +245,32 @@ export function GstReportPage() {
   const active = report ? (report.quarters.find((q) => q.id === picked) ?? report.quarters.find((q) => q.state === 'current') ?? report.quarters.find((q) => q.total.count > 0) ?? report.quarters[0]) : null;
 
   return (
-    <div className="bk-page">
-      <PageHeader eyebrow="Tax" title="GST returns" description="Every quarter and month: what you sold, how much GST you collected, what is left to pay." />
+    <div className="page">
+      <PageHeader
+        eyebrow="11 / GST returns"
+        title="GST returns"
+        description="Every quarter and month: what you sold, how much GST you collected, what is left to pay."
+        actions={
+          data && data.years.length > 1 ? (
+            <label className="bk-select">
+              Year
+              <select value={report?.fy ?? ''} onChange={(event) => { setFy(event.target.value); setPicked(null); }}>
+                {data.years.map((y) => <option key={y} value={y}>FY {y}</option>)}
+              </select>
+            </label>
+          ) : undefined
+        }
+      />
       {error ? <p className="bk-error" role="alert">{error}</p> : null}
       {!report || !active ? (
         !error ? <p className="bk-loading"><LoaderCircle className="spin" size={18} aria-hidden="true" /> Building your GST report…</p> : null
       ) : (
         <>
-          <section className="bk-hero">
-            <div>
-              <p className="bk-hero-kicker">Financial year 20{report.fy.slice(0, 2)}–{report.fy.slice(3)}</p>
-              <p className="bk-hero-title">GST to pay this year</p>
-              <p className="bk-hero-number">{inr(report.netPayableMinor)}</p>
-              <p className="bk-hero-sub">
-                On {inr(report.year.taxableMinor)} taxable sales · GST collected {inr(report.year.taxMinor)} · input credit {inr(report.itcMinor)} (unused credit carries forward)
-              </p>
-            </div>
-            {data && data.years.length > 1 ? (
-              <label className="bk-year">
-                Year
-                <select value={report.fy} onChange={(event) => { setFy(event.target.value); setPicked(null); }}>
-                  {data.years.map((y) => <option key={y} value={y}>FY {y}</option>)}
-                </select>
-              </label>
-            ) : null}
+          <section className="metric-grid">
+            <MetricCard icon={Banknote} label={`GST to pay, FY ${report.fy}`} value={inr(report.netPayableMinor)} detail="After input credit" />
+            <MetricCard icon={BadgeIndianRupee} label="Taxable sales this year" value={inr(report.year.taxableMinor)} detail={`${report.year.count} documents counted`} />
+            <MetricCard icon={Landmark} label="GST collected this year" value={inr(report.year.taxMinor)} detail="Output tax on counted documents" />
+            <MetricCard icon={PiggyBank} label="Input credit this year" value={inr(report.itcMinor)} detail="Unused credit carries forward" />
           </section>
 
           <div className="bk-quarters" role="tablist" aria-label="Quarters">
