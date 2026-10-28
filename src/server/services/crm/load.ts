@@ -11,6 +11,7 @@ import type {
   Proposal,
 } from '../../../data/types';
 import { db } from '../../db/client';
+import { gstModelFromRows } from '../invoicing/model';
 import {
   calendarEvents,
   clients,
@@ -109,6 +110,25 @@ export async function loadCrmSnapshot(workspaceId: string): Promise<CrmSnapshot>
     if (media.messageId && media.state === 'ready') mediaByMessage.set(media.messageId, media);
   }
 
+  const rawItemsByInvoice = new Map<string, (typeof invoiceItemRows)[number]['item'][]>();
+  for (const { item } of invoiceItemRows) {
+    const list = rawItemsByInvoice.get(item.invoiceId) ?? [];
+    list.push(item);
+    rawItemsByInvoice.set(item.invoiceId, list);
+  }
+  const gstSummary = (invoice: (typeof invoiceRows)[number]): Invoice['gst'] => {
+    const built = gstModelFromRows(invoice, rawItemsByInvoice.get(invoice.id) ?? [], 0);
+    if (!built) return undefined;
+    return {
+      docType: built.model.docType,
+      series: built.model.series,
+      totalMinor: built.totals.grandMinor,
+      taxMinor: built.totals.taxMinor,
+      cancelled: built.cancelled,
+      projectName: built.model.project.name,
+    };
+  };
+
   const toLead = (lead: (typeof leadRows)[number]): Lead => ({
     id: lead.id,
     name: lead.name,
@@ -200,6 +220,7 @@ export async function loadCrmSnapshot(workspaceId: string): Promise<CrmSnapshot>
         dueAt: invoice.dueAt.toISOString(),
         notes: invoice.notes,
         updatedAt: invoice.updatedAt.toISOString(),
+        gst: gstSummary(invoice),
       }),
     ),
     payments: paymentRows.map(

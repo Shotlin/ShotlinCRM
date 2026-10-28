@@ -31,6 +31,7 @@ export const INVOICE_STATUS_LABELS: Record<InvoiceStatus | InvoiceDisplayStatus,
   partially_paid: 'Partially paid',
   paid: 'Paid',
   overdue: 'Overdue',
+  cancelled: 'Cancelled',
 };
 
 export const SOURCE_LABELS: Record<LeadSource, string> = {

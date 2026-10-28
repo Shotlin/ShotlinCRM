@@ -101,6 +101,16 @@ export type Invoice = {
   dueAt: string;
   notes: string;
   updatedAt: string;
+  // Present only for GST invoices. `totalMinor` is the full payable amount including GST
+  // and round-off, which is what payments are matched against.
+  gst?: {
+    docType: 'final' | 'advance' | 'regular';
+    series: 'INV' | 'ADV';
+    totalMinor: number;
+    taxMinor: number;
+    cancelled: boolean;
+    projectName: string;
+  };
 };
 
 export type Payment = {

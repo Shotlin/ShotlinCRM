@@ -33,6 +33,7 @@ const INVOICE_TONES: Record<InvoiceStatus | InvoiceDisplayStatus, Tone> = {
   partially_paid: 'amber',
   overdue: 'red',
   paid: 'green',
+  cancelled: 'neutral',
 };
 
 export function StatusPill({

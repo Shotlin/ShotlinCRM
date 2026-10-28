@@ -4,6 +4,8 @@ import {
   CalendarClock,
   CircleDollarSign,
   Clock3,
+  Download,
+  FilePlus2,
   Plus,
   ReceiptText,
   Search,
@@ -138,9 +140,12 @@ export function InvoicesPage() {
             >
               <CircleDollarSign size={15} /> Record payment
             </button>
-            <button type="button" className="btn btn-primary" onClick={handleNew}>
-              <Plus size={16} /> New invoice
+            <button type="button" className="btn btn-secondary" onClick={handleNew}>
+              <Plus size={16} /> Plain invoice
             </button>
+            <Link to="/invoices/gst/new" className="btn btn-primary">
+              <FilePlus2 size={16} /> New GST invoice
+            </Link>
           </>
         }
       />
@@ -216,6 +221,7 @@ export function InvoicesPage() {
                 <option value="sent">Sent</option>
                 <option value="paid">Paid</option>
                 <option value="draft">Draft</option>
+                <option value="cancelled">Cancelled</option>
               </select>
             </label>
           ) : null}
@@ -242,9 +248,13 @@ export function InvoicesPage() {
                 {filteredInvoices.map((invoice) => (
                   <tr key={invoice.id}>
                     <td>
-                      <Link to={`/invoices/${invoice.id}/edit`} className="mono-cell link-strong">
+                      <Link
+                        to={invoice.gst ? `/invoices/gst/${invoice.id}` : `/invoices/${invoice.id}/edit`}
+                        className="mono-cell link-strong"
+                      >
                         {invoice.number}
                       </Link>
+                      {invoice.gst ? <span className="gst-tag">GST</span> : null}
                     </td>
                     <td>{invoice.client?.company ?? 'Unlinked'}</td>
                     <td className="muted-cell">{formatDate(invoice.issuedAt)}</td>
@@ -269,8 +279,19 @@ export function InvoicesPage() {
                             Record
                           </button>
                         ) : null}
+                        {invoice.gst ? (
+                          <a
+                            href={`/api/invoices/gst/${invoice.id}/file/pdf`}
+                            download
+                            className="icon-button row-open"
+                            aria-label={`Download ${invoice.number} as PDF`}
+                            title="Download PDF"
+                          >
+                            <Download size={15} />
+                          </a>
+                        ) : null}
                         <Link
-                          to={`/invoices/${invoice.id}/edit`}
+                          to={invoice.gst ? `/invoices/gst/${invoice.id}` : `/invoices/${invoice.id}/edit`}
                           className="icon-button row-open"
                           aria-label={`Open ${invoice.number}`}
                         >

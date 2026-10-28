@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ['127.0.0.1', 'localhost'],
   devIndicators: false,
   poweredByHeader: false,
-  serverExternalPackages: ['@whiskeysockets/baileys', '@node-rs/argon2', 'pg'],
+  serverExternalPackages: ['@whiskeysockets/baileys', '@node-rs/argon2', 'pg', 'pdfkit', 'docx'],
   // Frontend-only deployments (e.g. Vercel) set BACKEND_ORIGIN so the browser
   // keeps calling same-origin /api/* while the API runs on the backend server.
   async rewrites() {

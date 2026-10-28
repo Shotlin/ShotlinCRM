@@ -60,7 +60,7 @@ export function pipelineSummary(
 }
 
 export function invoiceTotalMinor(invoice: Invoice): number {
-  return lineItemsTotalMinor(invoice.lineItems);
+  return invoice.gst ? invoice.gst.totalMinor : lineItemsTotalMinor(invoice.lineItems);
 }
 
 export function invoicePaidMinor(invoice: Invoice, payments: Payment[]): number {
@@ -70,16 +70,19 @@ export function invoicePaidMinor(invoice: Invoice, payments: Payment[]): number 
 }
 
 export function invoiceBalanceMinor(invoice: Invoice, payments: Payment[]): number {
+  // A cancelled invoice is owed nothing, whatever its original total was.
+  if (invoice.gst?.cancelled) return 0;
   return Math.max(0, invoiceTotalMinor(invoice) - invoicePaidMinor(invoice, payments));
 }
 
-export type InvoiceDisplayStatus = 'draft' | 'sent' | 'partially_paid' | 'paid' | 'overdue';
+export type InvoiceDisplayStatus = 'draft' | 'sent' | 'partially_paid' | 'paid' | 'overdue' | 'cancelled';
 
 export function invoiceDisplayStatus(
   invoice: Invoice,
   payments: Payment[],
   now = new Date(),
 ): InvoiceDisplayStatus {
+  if (invoice.gst?.cancelled) return 'cancelled';
   const balance = invoiceBalanceMinor(invoice, payments);
   const paid = invoicePaidMinor(invoice, payments);
   if (balance === 0) return 'paid';

@@ -193,10 +193,62 @@ export const invoices = pgTable(
     issuedAt: timestamp('issued_at', { withTimezone: true }).notNull(),
     dueAt: timestamp('due_at', { withTimezone: true }).notNull(),
     notes: text('notes').notNull().default(''),
+    // GST invoice fields. All null for plain invoices, so existing invoices are unaffected.
+    docType: text('doc_type'),
+    series: text('series'),
+    fy: text('fy'),
+    serial: integer('serial'),
+    supplyType: text('supply_type'),
+    taxRatePct: integer('tax_rate_pct').notNull().default(18),
+    sac: text('sac').notNull().default('998314'),
+    paymentTerms: text('payment_terms').notNull().default(''),
+    // Billing details are copied onto the invoice so later client edits never change it.
+    customer: jsonb('customer').$type<{
+      name: string;
+      representative?: string;
+      address: string;
+      cityStatePin: string;
+      pan?: string;
+      gstin?: string;
+      placeOfSupply: string;
+      stateCode: string;
+    }>(),
+    project: jsonb('project').$type<{
+      name: string;
+      category?: string;
+      reference?: string;
+      advanceRef?: string;
+      advanceNote?: string;
+    }>(),
+    projectTaxableMinor: bigint('project_taxable_minor', { mode: 'number' }),
+    advanceTaxableMinor: bigint('advance_taxable_minor', { mode: 'number' }),
+    gstTreatment: text('gst_treatment').notNull().default(''),
+    adjustmentNote: text('adjustment_note').notNull().default(''),
+    terms: jsonb('terms').$type<string[]>().notNull().default([]),
+    // Issued invoices are cancelled, never deleted, so the number sequence stays unbroken.
+    cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+    cancelReason: text('cancel_reason'),
+    driveFiles: jsonb('drive_files').$type<{ pdfId?: string; docxId?: string; syncedAt?: string }>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (table) => [uniqueIndex('invoices_workspace_number_uidx').on(table.workspaceId, table.number)],
+  (table) => [
+    uniqueIndex('invoices_workspace_number_uidx').on(table.workspaceId, table.number),
+    // Plain invoices have a null series, and nulls never collide in a unique index.
+    uniqueIndex('invoices_series_serial_uidx').on(table.workspaceId, table.series, table.fy, table.serial),
+  ],
+);
+
+// Next serial per series and financial year. Allocated with a row lock, never reused.
+export const invoiceSeries = pgTable(
+  'invoice_series',
+  {
+    workspaceId: text('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+    series: text('series').notNull(),
+    fy: text('fy').notNull(),
+    nextSerial: integer('next_serial').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.workspaceId, table.series, table.fy] })],
 );
 
 export const invoiceItems = pgTable(
@@ -205,6 +257,7 @@ export const invoiceItems = pgTable(
     id: text('id').primaryKey(),
     invoiceId: text('invoice_id').notNull().references(() => invoices.id, { onDelete: 'cascade' }),
     description: text('description').notNull(),
+    detail: text('detail').notNull().default(''),
     quantity: integer('quantity').notNull(),
     unitPriceMinor: bigint('unit_price_minor', { mode: 'number' }).notNull(),
     position: integer('position').notNull(),
