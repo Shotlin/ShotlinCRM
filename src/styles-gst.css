@@ -288,3 +288,14 @@
 .gst-paper-terms ol { margin: 0; padding-left: 18px; font-size: 11px; color: #444; }
 .gst-paper-foot { display: flex; justify-content: space-between; gap: 12px; margin-top: 16px; padding-top: 8px; border-top: 1px solid #ccc; font-size: 10px; color: #666; }
 @media (max-width: 700px) { .gst-paper { padding: 16px; } .gst-paper-two { grid-template-columns: 1fr; } .gst-paper-head { flex-direction: column; } .gst-paper-title { text-align: left; } }
+
+.gst-amend { margin-bottom: 16px; padding: 16px 18px; border-color: #efe3c6; background: #fffdf8; display: flex; flex-direction: column; gap: 10px; }
+.gst-amend h3 { margin: 0; font-size: 12.5px; font-weight: 590; }
+.gst-amend p { margin: 0; color: var(--ink-soft); font-size: 11.5px; line-height: 1.55; }
+.gst-amend .btn { align-self: flex-start; }
+.gst-history { margin-top: 16px; }
+.gst-history ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.gst-history li { display: flex; flex-direction: column; gap: 2px; font-size: 11.5px; color: var(--ink-soft); }
+.gst-history li span { color: var(--muted); }
+
+.gst-share { margin-top: 16px; }

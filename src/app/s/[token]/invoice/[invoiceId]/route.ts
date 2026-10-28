@@ -3,7 +3,7 @@ import { headers } from 'next/headers';
 import { rateLimit } from '@/server/http/rate-limit';
 import { invoiceFileBytes } from '@/server/services/invoicing/frozen';
 import { invoiceFileName, loadGstInvoice } from '@/server/services/invoicing/issue';
-import { invoiceBelongsToLink, resolveShare } from '@/server/services/share/store';
+import { invoiceAllowedForLink, resolveShare } from '@/server/services/share/store';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -15,7 +15,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
   const ip = (await headers()).get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
   if (!(await rateLimit(`share-file:${ip}`, 40, 60))) return new NextResponse('Too many requests.', { status: 429 });
   const link = await resolveShare(token);
-  if (!link || link.kind !== 'project' || !(await invoiceBelongsToLink(link.workspaceId, link.targetId, invoiceId))) return gone();
+  if (!link || !(await invoiceAllowedForLink(link, invoiceId))) return gone();
   try {
     const invoice = await loadGstInvoice(link.workspaceId, invoiceId);
     if (invoice.status === 'draft' || invoice.cancelled) return gone();

@@ -795,3 +795,20 @@ export const shareLinks = pgTable(
   },
   (table) => [uniqueIndex('share_links_token_uidx').on(table.tokenHash), index('share_links_target_idx').on(table.workspaceId, table.kind, table.targetId)],
 );
+
+// Every time an issued invoice is amended, what it said before is kept here.
+export const invoiceRevisions = pgTable(
+  'invoice_revisions',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+    invoiceId: text('invoice_id').notNull().references(() => invoices.id, { onDelete: 'cascade' }),
+    revision: integer('revision').notNull(),
+    reason: text('reason').notNull(),
+    previousNumber: text('previous_number').notNull(),
+    previousGrandMinor: bigint('previous_grand_minor', { mode: 'number' }).notNull(),
+    snapshot: jsonb('snapshot').$type<Record<string, unknown>>().notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [index('invoice_revisions_invoice_idx').on(table.invoiceId, table.revision)],
+);

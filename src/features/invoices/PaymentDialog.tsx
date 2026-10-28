@@ -26,6 +26,7 @@ export function PaymentDialog({
   const payments = useCrmStore((state) => state.payments);
   const recordPayment = useCrmStore((state) => state.recordPayment);
   const flush = useCrmStore((state) => state.flush);
+  const refresh = useCrmStore((state) => state.refresh);
   const { notify } = useToast();
   const [invoiceId, setInvoiceId] = useState(initialInvoiceId ?? '');
   const [amount, setAmount] = useState('');
@@ -37,7 +38,10 @@ export function PaymentDialog({
   const available = useMemo(
     () =>
       invoices.filter(
-        (invoice) => invoice.status !== 'draft' && invoiceBalanceMinor(invoice, payments) > 0,
+        (invoice) =>
+          // An advance payment request can be paid straight away; it does not need to be marked as sent first.
+          (invoice.status !== 'draft' || (invoice.gst?.docType === 'advance' && invoice.gst.series === 'REF')) &&
+          invoiceBalanceMinor(invoice, payments) > 0,
       ),
     [invoices, payments],
   );
@@ -86,6 +90,8 @@ export function PaymentDialog({
       note: note.trim(),
     });
     await flush();
+    // A paid advance request has just been given its tax number, so reload the list.
+    await refresh().catch(() => undefined);
     notify(
       amountMinor === balance ? 'Invoice paid in full' : 'Partial payment recorded',
     );
@@ -126,6 +132,10 @@ export function PaymentDialog({
             ))}
           </select>
         </label>
+
+        {invoice?.gst?.docType === 'advance' && invoice.gst.series === 'REF' ? (
+          <p className="muted-copy">This is a payment request. Paying it in full gives it the next advance number, in the order payments arrive.</p>
+        ) : null}
 
         {invoice ? (
           <div className="payment-summary">

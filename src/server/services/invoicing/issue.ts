@@ -1,11 +1,12 @@
 import { and, asc, eq, isNotNull, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { db } from '../../db/client';
-import { clients, invoiceItems, invoiceSeries, invoices, leads, payments } from '../../db/schema';
+import { clients, invoiceItems, invoiceRevisions, invoiceSeries, invoices, leads, payments } from '../../db/schema';
 import {
   defaultGstTreatment,
   documentNumber,
   financialYear,
+  formatMoney,
   type DocType,
   type GstInvoice,
 } from './calc';
@@ -209,7 +210,14 @@ export async function createGstInvoice(workspaceId: string, input: GstInvoiceInp
 
 // The number, series and financial year are fixed once allocated. A date that would move
 // the invoice into another financial year is refused instead of renumbering it.
-export async function updateGstInvoice(workspaceId: string, invoiceId: string, input: GstInvoiceInput) {
+// A draft can be edited freely. An issued invoice can only be amended: the reason is required, what it said
+// before is kept as a revision, and it can never be made smaller than what has already been received.
+export async function updateGstInvoice(
+  workspaceId: string,
+  invoiceId: string,
+  input: GstInvoiceInput,
+  options: { amend?: boolean; reason?: string } = {},
+) {
   const updated = await db.transaction(async (tx) => {
     const [existing] = await tx
       .select()
@@ -219,14 +227,38 @@ export async function updateGstInvoice(workspaceId: string, invoiceId: string, i
       .limit(1);
     if (!existing || !existing.docType) throw new Error('GST invoice not found');
     if (existing.cancelledAt) throw new Error('A cancelled invoice cannot be edited');
-    if (existing.status !== 'draft') {
-      throw new Error('An issued invoice cannot be edited. Cancel it and issue a new one instead.');
+    const issued = existing.status !== 'draft';
+    const reason = options.reason?.trim() ?? '';
+    if (issued) {
+      if (!options.amend) throw new Error('This invoice is already issued. Press "Edit this invoice" to amend it.');
+      if (reason.length < 3) throw new Error('Give a short reason for the change');
     }
     if (existing.docType !== input.docType) throw new Error('The invoice type cannot be changed after the number is issued');
     if (financialYear(input.issuedAt).label !== existing.fy) {
       throw new Error('The date would move this invoice to another financial year');
     }
     await assertClientAndLead(tx, workspaceId, input.clientId, input.leadId);
+
+    let revision: number | null = null;
+    let received = 0;
+    if (issued) {
+      const oldItems = await tx.select().from(invoiceItems).where(eq(invoiceItems.invoiceId, invoiceId));
+      const [paid] = await tx.select({ total: sql<number>`coalesce(sum(${payments.amountMinor}), 0)::bigint` }).from(payments).where(eq(payments.invoiceId, invoiceId));
+      received = Number(paid?.total ?? 0);
+      const previous = gstModelFromRows(existing, oldItems, received);
+      const [count] = await tx.select({ n: sql<number>`count(*)::int` }).from(invoiceRevisions).where(eq(invoiceRevisions.invoiceId, invoiceId));
+      revision = (count?.n ?? 0) + 1;
+      await tx.insert(invoiceRevisions).values({
+        id: `revision-${randomUUID()}`,
+        workspaceId,
+        invoiceId,
+        revision,
+        reason,
+        previousNumber: existing.number,
+        previousGrandMinor: previous?.totals.grandMinor ?? 0,
+        snapshot: JSON.parse(JSON.stringify({ invoice: existing, items: oldItems })),
+      });
+    }
 
     const fields = fieldsFromInput(input);
     await tx
@@ -240,7 +272,21 @@ export async function updateGstInvoice(workspaceId: string, invoiceId: string, i
       .where(eq(invoices.id, invoiceId));
     await tx.delete(invoiceItems).where(eq(invoiceItems.invoiceId, invoiceId));
     await tx.insert(invoiceItems).values(itemRows(invoiceId, input));
-    return { id: invoiceId, docNo: existing.number };
+
+    if (issued) {
+      const [row] = await tx.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1);
+      const newItems = await tx.select().from(invoiceItems).where(eq(invoiceItems.invoiceId, invoiceId));
+      const next = gstModelFromRows(row, newItems, received);
+      const newGrand = next?.totals.grandMinor ?? 0;
+      if (received > newGrand) {
+        throw new Error(`The new total is less than the ${formatMoney(received)} already received. Reverse the payment first.`);
+      }
+      // If more is now due, it is no longer "paid".
+      if (existing.status === 'paid' && received < newGrand) {
+        await tx.update(invoices).set({ status: 'sent' }).where(eq(invoices.id, invoiceId));
+      }
+    }
+    return { id: invoiceId, docNo: existing.number, revision };
   });
   await markDriveDirty(workspaceId, invoiceId);
   return updated;

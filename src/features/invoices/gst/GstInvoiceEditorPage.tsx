@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { ArrowLeft, Ban, Check, CircleDollarSign, Download, FileText, Send } from 'lucide-react';
+import { ArrowLeft, Ban, Check, CircleDollarSign, Download, FileText, Pencil, Send } from 'lucide-react';
 import { Link, useNavigate, useParams } from '../../../lib/router';
 import {
   amountInWords,
@@ -14,11 +14,16 @@ import { useCrmStore } from '../../../store/crmStore';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { useToast } from '../../../components/ui/Toast';
 import { DEFAULT_JURISDICTION_TERM } from '../../../server/services/invoicing/supplier';
+import { milestoneInvoiceDraft, nextUnbilledMilestone, type DraftMilestone } from '../../../server/services/deals/milestones';
+import { SharePanel } from '../../deals/SharePanel';
 import type { NumberingState } from '../../../server/services/invoicing/numbering';
 import { PaymentDialog } from '../PaymentDialog';
 import { InvoicePreview } from './InvoicePreview';
 import { NumberingPanel } from './NumberingPanel';
 import { GST_STATES } from './states';
+
+type ProjectOption = { id: string; clientId: string; title: string; status: string; client: string };
+type ProjectLite = { id: string; title: string; client: { id: string; name: string; company: string }; agreement: { title: string } | null; milestones: (DraftMilestone & { kind: 'agreed' | 'additional' })[] };
 
 type LineForm = { id: string; description: string; detail: string; qty: string; unitPrice: string };
 
@@ -218,6 +223,12 @@ export function GstInvoiceEditorPage() {
   const [numbering, setNumbering] = useState<NumberingState | null>(null);
   const [prefilled, setPrefilled] = useState(false);
   const [milestoneId, setMilestoneId] = useState('');
+  const [amending, setAmending] = useState(false);
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
+  const [projectId, setProjectId] = useState('');
+  const [projectDetail, setProjectDetail] = useState<ProjectLite | null>(null);
+  const [amendReason, setAmendReason] = useState('');
+  const [revisions, setRevisions] = useState<{ revision: number; reason: string; previousNumber: string; previousGrandMinor: number; at: string }[]>([]);
 
   const load = async (id: string) => {
     const response = await fetch(`/api/invoices/gst/${id}`, { cache: 'no-store' });
@@ -228,6 +239,10 @@ export function GstInvoiceEditorPage() {
     const payload = (await response.json()) as Loaded;
     setLoaded(payload);
     setForm(formFromInvoice(payload));
+    fetch(`/api/invoices/gst/${id}/revisions`, { cache: 'no-store' })
+      .then((r) => (r.ok ? (r.json() as Promise<{ revisions: typeof revisions }>) : null))
+      .then((r) => r && setRevisions(r.revisions))
+      .catch(() => undefined);
   };
 
   useEffect(() => {
@@ -236,6 +251,7 @@ export function GstInvoiceEditorPage() {
     load(invoiceId)
       .catch(() => setMissing(true))
       .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [invoiceId]);
 
   // While the worker is sending the invoice to Drive, check back every few seconds.
@@ -244,6 +260,7 @@ export function GstInvoiceEditorPage() {
     if (!invoiceId || !driveWaiting) return;
     const timer = setInterval(() => void load(invoiceId).catch(() => undefined), 5000);
     return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [invoiceId, driveWaiting]);
 
 
@@ -258,6 +275,79 @@ export function GstInvoiceEditorPage() {
       alive = false;
     };
   }, [invoiceId, loaded?.docNo]);
+
+  // Billing details are reused from this client's last invoice, so nothing already known is typed twice.
+  const fillBilling = async (clientId: string) => {
+    try {
+      const response = await fetch(`/api/invoices/gst/last-billing?clientId=${encodeURIComponent(clientId)}`, { cache: 'no-store' });
+      const last = response.ok ? ((await response.json()) as { customer: GstInvoice['customer'] | null }).customer : null;
+      if (!last) return;
+      setForm((current) => ({
+        ...current,
+        customerName: last.name,
+        representative: last.representative ?? '',
+        address: last.address,
+        cityStatePin: last.cityStatePin,
+        pan: last.pan ?? '',
+        gstin: last.gstin ?? '',
+        stateCode: last.stateCode,
+      }));
+    } catch {
+      // The form still works, it is just typed by hand.
+    }
+  };
+
+  // Puts one milestone's details into the form: type, amounts, wording and the advances it adjusts.
+  const applyMilestone = (detail: ProjectLite, id: string) => {
+    const draft = milestoneInvoiceDraft(detail.milestones, id, detail.agreement?.title);
+    setMilestoneId(id);
+    if (!draft) return;
+    setForm((current) => ({
+      ...current,
+      docType: draft.docType,
+      projectName: detail.title,
+      reference: draft.ref,
+      projectTaxable: draft.projectTotalMinor === null ? '' : String(draft.projectTotalMinor / 100),
+      advanceTaxable: draft.advanceMinor === null ? '' : String(draft.advanceMinor / 100),
+      advanceRef: draft.advanceRef,
+      lines: [{ id: `line-${Math.random().toString(36).slice(2)}`, description: draft.line, detail: '', qty: '1', unitPrice: String(draft.amountMinor / 100) }],
+    }));
+  };
+
+  // Picking a project fills the client, the billing details, the project name and the next milestone that has no invoice.
+  const chooseProject = async (id: string) => {
+    setProjectId(id);
+    if (!id) {
+      setProjectDetail(null);
+      setMilestoneId('');
+      return;
+    }
+    const response = await fetch(`/api/projects/${id}`, { cache: 'no-store' });
+    if (!response.ok) return;
+    const detail = (await response.json()) as ProjectLite;
+    setProjectDetail(detail);
+    setForm((current) => ({
+      ...current,
+      clientId: detail.client.id,
+      customerName: detail.client.company || detail.client.name,
+      projectName: detail.title,
+      reference: detail.agreement ? `Agreement: ${detail.agreement.title}` : current.reference,
+    }));
+    void fillBilling(detail.client.id);
+    const next = nextUnbilledMilestone(detail.milestones);
+    if (next) applyMilestone(detail, next.id);
+  };
+
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/projects/overview', { cache: 'no-store' })
+      .then((response) => (response.ok ? (response.json() as Promise<{ projects: ProjectOption[] }>) : null))
+      .then((payload) => alive && payload && setProjects(payload.projects))
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // "New invoice" on a client opens this page with the client already chosen. Nothing is saved until Create draft.
   useEffect(() => {
@@ -286,29 +376,14 @@ export function GstInvoiceEditorPage() {
         : {}),
     }));
     if (query.get('milestoneId')) setMilestoneId(query.get('milestoneId') ?? '');
-    // Start from the billing details used on this client's last invoice.
-    if (client) {
-      fetch(`/api/invoices/gst/last-billing?clientId=${encodeURIComponent(client.id)}`, { cache: 'no-store' })
-        .then((response) => (response.ok ? (response.json() as Promise<{ customer: GstInvoice['customer'] | null }>) : null))
-        .then((payload) => {
-          const last = payload?.customer;
-          if (!last) return;
-          setForm((current) => ({
-            ...current,
-            customerName: last.name,
-            representative: last.representative ?? '',
-            address: last.address,
-            cityStatePin: last.cityStatePin,
-            pan: last.pan ?? '',
-            gstin: last.gstin ?? '',
-            stateCode: last.stateCode,
-          }));
-        })
-        .catch(() => undefined);
-    }
+    // Start from the billing details used on this client's last invoice, and the project if one was named.
+    if (client) void fillBilling(client.id);
+    const asked = query.get('projectId');
+    if (asked) void chooseProject(asked);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clients, invoiceId, prefilled]);
 
-  const editable = !loaded || (loaded.status === 'draft' && !loaded.cancelled);
+  const editable = !loaded || ((loaded.status === 'draft' || amending) && !loaded.cancelled);
   const patch = <K extends keyof Form>(key: K, value: Form[K]) => setForm((current) => ({ ...current, [key]: value }));
   const updateLine = (id: string, change: Partial<LineForm>) =>
     setForm((current) => ({ ...current, lines: current.lines.map((line) => (line.id === id ? { ...line, ...change } : line)) }));
@@ -318,9 +393,13 @@ export function GstInvoiceEditorPage() {
     setForm((current) => ({
       ...current,
       clientId,
-      customerName: current.customerName || client?.company || client?.name || '',
+      customerName: client?.company || client?.name || current.customerName,
       cityStatePin: current.cityStatePin || client?.city || '',
     }));
+    if (clientId) void fillBilling(clientId);
+    // A client with exactly one active project is offered straight away.
+    const mine = projects.filter((project) => project.clientId === clientId && project.status === 'active');
+    if (mine.length === 1 && !projectId) void chooseProject(mine[0].id);
   };
 
   const chooseState = (stateCode: string) => patch('stateCode', stateCode);
@@ -336,7 +415,7 @@ export function GstInvoiceEditorPage() {
     const rate = Math.round(Number(form.taxRatePct) || 0);
     const model: GstInvoice = {
       docType: form.docType,
-      series: form.docType === 'advance' ? 'ADV' : 'INV',
+      series: loaded?.invoice.series ?? 'REF',
       serial: 0,
       issuedAt: new Date(`${form.issuedAt}T12:00:00+05:30`),
       sac: form.sac,
@@ -421,13 +500,18 @@ export function GstInvoiceEditorPage() {
       setErrors(['Choose a client first.']);
       return;
     }
+    const isAmendment = Boolean(invoiceId && loaded && loaded.status !== 'draft');
+    if (isAmendment && amendReason.trim().length < 3) {
+      setErrors(['Write a short reason for the change.']);
+      return;
+    }
     setSaving(true);
     setErrors([]);
     try {
       const response = await fetch(invoiceId ? `/api/invoices/gst/${invoiceId}` : '/api/invoices/gst', {
         method: invoiceId ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(invoiceId ? bodyFromForm(form) : { ...bodyFromForm(form), ...(milestoneId ? { milestoneId } : {}) }),
+        body: JSON.stringify(invoiceId ? { ...bodyFromForm(form), ...(isAmendment ? { amend: true, reason: amendReason.trim() } : {}) } : { ...bodyFromForm(form), ...(milestoneId ? { milestoneId } : {}) }),
       });
       const payload = (await response.json().catch(() => null)) as
         | { error?: string; issues?: { path: string; message: string }[]; id?: string; docNo?: string }
@@ -437,7 +521,11 @@ export function GstInvoiceEditorPage() {
         return;
       }
       await refresh().catch(() => undefined);
-      notify(invoiceId ? 'Invoice saved' : `Draft ${payload?.docNo ?? ''} created`);
+      notify(isAmendment ? 'Invoice amended. The old version is kept in the history.' : invoiceId ? 'Invoice saved' : `Draft ${payload?.docNo ?? ''} created`);
+      if (isAmendment) {
+        setAmending(false);
+        setAmendReason('');
+      }
       if (!invoiceId && payload?.id) navigate(`/invoices/gst/${payload.id}`);
       else if (invoiceId) await load(invoiceId);
     } finally {
@@ -511,7 +599,7 @@ export function GstInvoiceEditorPage() {
                 ? 'This invoice is cancelled. Its number stays on record.'
                 : loaded.status === 'draft'
                   ? 'Draft: you can still edit it. Issuing locks it.'
-                  : 'Issued: it can be paid or cancelled, but not edited.'
+                  : 'Issued. You can record payments, share it, cancel it or press Edit this invoice to amend it.'
               : 'Nothing is saved until you press Create draft. Tax numbers are given later, so a draft you drop leaves no gap.'}
           </p>
         </div>
@@ -531,6 +619,11 @@ export function GstInvoiceEditorPage() {
               </a>
             </>
           ) : null}
+          {loaded && loaded.status !== 'draft' && !loaded.cancelled && !amending ? (
+            <button type="button" className="btn btn-secondary" onClick={() => setAmending(true)}>
+              <Pencil size={15} /> Edit this invoice
+            </button>
+          ) : null}
           {loaded && loaded.status === 'draft' && !loaded.cancelled ? (
             <button
               type="button"
@@ -542,9 +635,9 @@ export function GstInvoiceEditorPage() {
               <Send size={15} /> {loaded.invoice.docType === 'advance' ? 'Mark request as sent' : 'Mark as issued'}
             </button>
           ) : null}
-          {loaded && loaded.status !== 'draft' && !loaded.cancelled ? (
+          {loaded && !loaded.cancelled && (loaded.status !== 'draft' || (loaded.invoice.docType === 'advance' && loaded.invoice.series === 'REF')) ? (
             <button type="button" className="btn btn-primary" onClick={() => setPaymentOpen(true)} disabled={balance === 0}>
-              <CircleDollarSign size={15} /> Record payment
+              <CircleDollarSign size={15} /> {balance === 0 ? 'Paid' : 'Mark as paid'}
             </button>
           ) : null}
         </div>
@@ -592,6 +685,21 @@ export function GstInvoiceEditorPage() {
         </div>
       ) : null}
 
+      {amending ? (
+        <section className="card gst-amend" role="status">
+          <h3>You are amending an issued invoice</h3>
+          <p>
+            The number stays <b>{loaded?.docNo}</b>. What it says now is kept in the history, and the PDF and Word file are redrawn.
+            If your client already has the old copy, send them the new one. If it was already filed for GST, tell your accountant.
+          </p>
+          <label className="field">
+            <span>Reason for the change *</span>
+            <input value={amendReason} onChange={(event) => setAmendReason(event.target.value)} placeholder="e.g. Scope changed, amount corrected" />
+          </label>
+          <button type="button" className="btn btn-secondary" onClick={() => { setAmending(false); if (invoiceId) void load(invoiceId); }}>Stop editing</button>
+        </section>
+      ) : null}
+
       <form className="split-editor gst-editor" onSubmit={submit}>
         <div className="editor-form">
           <section className="card editor-section">
@@ -623,6 +731,31 @@ export function GstInvoiceEditorPage() {
                   ))}
                 </select>
               </label>
+              {!loaded ? (
+                <>
+                  <label className="field">
+                    <span>Project (optional)</span>
+                    <select value={projectId} onChange={(event) => void chooseProject(event.target.value)} disabled={disabled}>
+                      <option value="">No project</option>
+                      {projects.filter((project) => project.status === 'active' || project.id === projectId).map((project) => (
+                        <option key={project.id} value={project.id}>{project.title} · {project.client}</option>
+                      ))}
+                    </select>
+                  </label>
+                  {projectDetail ? (
+                    <label className="field">
+                      <span>Which milestone is this for?</span>
+                      <select value={milestoneId} onChange={(event) => applyMilestone(projectDetail, event.target.value)} disabled={disabled}>
+                        {projectDetail.milestones.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.title} · ₹{(m.baseMinor / 100).toLocaleString('en-IN')}{m.kind === 'additional' ? ' (additional)' : ''}{m.invoice && !m.invoice.cancelled ? ` · already invoiced ${m.invoice.number}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+                </>
+              ) : null}
               <label className="field">
                 <span>Issue date *</span>
                 <input type="date" value={form.issuedAt} onChange={(event) => patch('issuedAt', event.target.value)} disabled={disabled} />
@@ -827,7 +960,7 @@ export function GstInvoiceEditorPage() {
           {editable ? (
             <div className="gst-submit">
               <button type="submit" className="btn btn-primary" disabled={saving}>
-                <Check size={15} /> {invoiceId ? 'Save changes' : 'Create draft'}
+                <Check size={15} /> {invoiceId ? (amending ? 'Save amendment' : 'Save changes') : 'Create draft'}
               </button>
             </div>
           ) : null}
@@ -925,6 +1058,22 @@ export function GstInvoiceEditorPage() {
         </aside>
       </form>
 
+      {loaded && invoiceId && loaded.status !== 'draft' && !loaded.cancelled ? <div className="gst-share"><SharePanel kind="invoice" targetId={invoiceId} /></div> : null}
+
+      {revisions.length > 0 ? (
+        <section className="card editor-section gst-history" aria-label="Amendment history">
+          <div className="editor-section-head"><div><span className="card-kicker">History</span><h2>Amendments</h2></div></div>
+          <ul>
+            {revisions.map((revision) => (
+              <li key={revision.revision}>
+                <b>Revision {revision.revision}</b> · {new Date(revision.at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                <span>{revision.reason}. It was {formatMoney(revision.previousGrandMinor)} before.</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       <section className="card gst-preview-card" aria-label="Live preview">
         <div className="editor-section-head">
           <div>
@@ -936,7 +1085,7 @@ export function GstInvoiceEditorPage() {
         <InvoicePreview model={previewModel} docNoLabel={loaded ? loaded.docNo : form.docType === 'advance' ? 'REF given when saved' : 'Draft, no number yet'} />
       </section>
 
-      <PaymentDialog open={paymentOpen} onOpenChange={setPaymentOpen} invoices={invoices} initialInvoiceId={storeInvoice?.id} />
+      <PaymentDialog open={paymentOpen} onOpenChange={setPaymentOpen} invoices={invoices} initialInvoiceId={storeInvoice?.id} lockInvoice onRecorded={() => { if (invoiceId) void load(invoiceId); }} />
     </div>
   );
 }

@@ -34,3 +34,49 @@ export function invoicePlan(parts: number[], index: number) {
     ? { docType: 'final' as const, projectTaxableMinor: total, advanceTaxableMinor: before, lineMinor: parts[index] }
     : { docType: 'advance' as const, projectTaxableMinor: total, advanceTaxableMinor: parts[index], lineMinor: parts[index] };
 }
+
+export type DraftMilestone = {
+  id: string;
+  kind: 'agreed' | 'additional';
+  title: string;
+  baseMinor: number;
+  invoice: { number: string; cancelled: boolean } | null;
+};
+
+const activeInvoice = (m: DraftMilestone) => Boolean(m.invoice && !m.invoice.cancelled);
+
+// What the invoice for one milestone should contain. Agreed milestones follow the advance-then-final plan;
+// an additional charge is an ordinary invoice that leaves the agreed advances alone.
+export function milestoneInvoiceDraft(milestones: DraftMilestone[], milestoneId: string, agreementTitle?: string | null) {
+  const target = milestones.find((m) => m.id === milestoneId);
+  if (!target) return null;
+  if (target.kind === 'additional') {
+    return {
+      docType: 'regular' as const,
+      projectTotalMinor: null,
+      advanceMinor: null,
+      amountMinor: target.baseMinor,
+      line: target.title,
+      ref: `Additional scope under agreement${agreementTitle ? `: ${agreementTitle}` : ''}`,
+      advanceRef: '',
+    };
+  }
+  const agreed = milestones.filter((m) => m.kind === 'agreed');
+  const position = agreed.findIndex((m) => m.id === milestoneId);
+  const plan = invoicePlan(agreed.map((m) => m.baseMinor), position);
+  const before = agreed.slice(0, position).filter(activeInvoice).map((m) => m.invoice!.number).join(', ');
+  return {
+    docType: plan.docType,
+    projectTotalMinor: plan.projectTaxableMinor,
+    advanceMinor: plan.advanceTaxableMinor,
+    amountMinor: plan.lineMinor,
+    line: target.title,
+    ref: agreementTitle ? `Agreement: ${agreementTitle}` : '',
+    advanceRef: plan.docType === 'final' ? before : '',
+  };
+}
+
+// The milestone to suggest: the first agreed one not yet invoiced, then any additional charge.
+export function nextUnbilledMilestone(milestones: DraftMilestone[]) {
+  return milestones.find((m) => m.kind === 'agreed' && !activeInvoice(m)) ?? milestones.find((m) => m.kind === 'additional' && !activeInvoice(m)) ?? null;
+}

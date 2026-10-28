@@ -516,7 +516,11 @@ export async function applyCrmAction(workspaceId: string, actorId: string, actio
           .for('update')
           .limit(1);
         if (!invoice) throw new Error('Invoice not found in this workspace');
-        if (invoice.status === 'draft') throw new Error('Draft invoices cannot receive payments');
+        const isRequest = invoice.docType === 'advance' && invoice.series === 'REF';
+        if (invoice.status === 'draft' && !isRequest) throw new Error('Draft invoices cannot receive payments');
+        if (invoice.status === 'draft' && isRequest) {
+          await tx.update(invoices).set({ status: 'sent', updatedAt: now() }).where(eq(invoices.id, invoice.id));
+        }
 
         if (invoice.cancelledAt) throw new Error('A cancelled invoice cannot receive payments');
         const items = await tx.select().from(invoiceItems).where(eq(invoiceItems.invoiceId, invoice.id));

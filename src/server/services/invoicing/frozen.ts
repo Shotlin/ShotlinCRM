@@ -46,3 +46,22 @@ export async function invoiceFileBytes(workspaceId: string, invoice: Loaded, for
   }
   return bytes;
 }
+
+// When an issued invoice is amended, the master copies in R2 are filed away as that revision and removed from
+// the live place, so the next download draws and freezes the amended invoice. Nothing is deleted outright.
+export async function archiveFrozenMasters(workspaceId: string, before: Loaded, revision: number) {
+  const storage = await resolveStorage(workspaceId);
+  if (storage.mode !== 's3') return;
+  for (const format of ['pdf', 'docx'] as const) {
+    const name = invoiceFileName(before.model, format);
+    const key = frozenKey(workspaceId, before.docNo, name);
+    if (!(await headObjectInBucket(storage.config, key))) continue;
+    const bytes = await getObjectFromBucket(storage.config, key);
+    const archive = frozenKey(workspaceId, `superseded-${before.docNo}`, `rev-${revision}-${name}`);
+    await putObjectToBucket(storage.config, archive, bytes, MIME[format], { superseded: 'true', docNo: before.docNo });
+    if ((await headObjectInBucket(storage.config, archive))?.sizeBytes === bytes.length) {
+      const { deleteObjectFromBucket } = await import('../../storage');
+      await deleteObjectFromBucket(storage.config, key);
+    }
+  }
+}

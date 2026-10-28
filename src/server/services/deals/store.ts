@@ -360,6 +360,7 @@ export async function listProjectsWithProgress(workspaceId: string) {
     const mine = ms.filter((m) => m.projectId === project.id);
     return {
       id: project.id,
+      clientId: project.clientId,
       title: project.title,
       status: project.status,
       client: company || client,

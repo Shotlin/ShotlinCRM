@@ -32,3 +32,8 @@ body:has(.sh-page) { background: #f6f5fb; }
 .sh-foot { text-align: center; font-size: 12.5px; color: #6a6880; }
 @media (max-width: 560px) { .sh-ms li { flex-direction: column; } .sh-right { text-align: left; } .sh-hero h1 { font-size: 23px; } }
 @media print { .sh-hero { background: #4a2bd8 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } .sh-btn { display: none; } }
+
+.sh-totals { margin: 0 0 16px; }
+.sh-totals div { display: flex; justify-content: space-between; gap: 10px; padding: 8px 2px; border-bottom: 1px solid #e6e3f5; font-size: 14px; }
+.sh-totals dt, .sh-totals dd { margin: 0; }
+.sh-grand { font-weight: 700; font-size: 16px !important; }

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { MetricCard } from '@/components/ui/MetricCard';
 import { Link, useParams } from '@/lib/router';
-import { gstOf, invoicePlan } from '@/server/services/deals/milestones';
+import { gstOf, milestoneInvoiceDraft } from '@/server/services/deals/milestones';
 import { day, inr } from '../gst/format';
 import { PROJECT_STATUS } from './ProjectsPage';
 import { SharePanel } from './SharePanel';
@@ -101,34 +101,20 @@ export function ProjectDetailPage() {
   const done = roadmap.filter((r) => r.status === 'done');
 
   const invoiceLink = (m: Milestone) => {
-    if (m.kind === 'additional') {
-      // Extra work is billed as an ordinary tax invoice. It does not touch the agreed advances.
-      const query = new URLSearchParams({
-        clientId: data.client.id,
-        milestoneId: m.id,
-        type: 'regular',
-        project: data.title,
-        amount: String(m.baseMinor / 100),
-        line: m.title,
-        ref: `Additional scope under agreement${data.agreement ? `: ${data.agreement.title}` : ''}`,
-      });
-      return `/invoices/gst/new?${query.toString()}`;
-    }
-    const position = agreed.findIndex((x) => x.id === m.id);
-    const plan = invoicePlan(parts, position);
-    const before = agreed.slice(0, position).map((x) => x.invoice?.number).filter(Boolean).join(', ');
+    const draft = milestoneInvoiceDraft(data.milestones, m.id, data.agreement?.title);
+    if (!draft) return '/invoices/gst/new';
     const query = new URLSearchParams({
       clientId: data.client.id,
       milestoneId: m.id,
-      type: plan.docType,
+      type: draft.docType,
       project: data.title,
-      projectTotal: String(plan.projectTaxableMinor / 100),
-      advance: String(plan.advanceTaxableMinor / 100),
-      amount: String(plan.lineMinor / 100),
-      line: m.title,
-      ref: data.agreement ? `Agreement: ${data.agreement.title}` : '',
-      advanceRef: plan.docType === 'final' ? before : '',
+      amount: String(draft.amountMinor / 100),
+      line: draft.line,
+      ref: draft.ref,
     });
+    if (draft.projectTotalMinor !== null) query.set('projectTotal', String(draft.projectTotalMinor / 100));
+    if (draft.advanceMinor !== null) query.set('advance', String(draft.advanceMinor / 100));
+    if (draft.advanceRef) query.set('advanceRef', draft.advanceRef);
     return `/invoices/gst/new?${query.toString()}`;
   };
 

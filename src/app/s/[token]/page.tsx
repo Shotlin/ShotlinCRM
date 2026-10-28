@@ -1,7 +1,7 @@
 import { headers } from 'next/headers';
 import type { Metadata } from 'next';
 import { rateLimit } from '@/server/http/rate-limit';
-import { loadPublicProject, resolveShare } from '@/server/services/share/store';
+import { loadPublicInvoice, loadPublicProject, resolveShare } from '@/server/services/share/store';
 
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'Project update', robots: { index: false, follow: false, nocache: true } };
@@ -29,6 +29,44 @@ export default async function SharedProject({ params }: { params: Promise<{ toke
   const ip = (await headers()).get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
   if (!(await rateLimit(`share-page:${ip}`, 60, 60))) return <Unavailable message="Too many requests. Try again in a minute." />;
   const link = await resolveShare(token, true);
+  if (link && link.kind === 'invoice') {
+    const invoice = await loadPublicInvoice(link.workspaceId, link.targetId);
+    if (!invoice) return <Unavailable message="This link is no longer available." />;
+    return (
+      <main className="sh-page">
+        <header className="sh-hero">
+          <p className="sh-brand">SHOTLIN <span>Digital Product Studio</span></p>
+          <h1>{invoice.heading.title}</h1>
+          <p>{invoice.heading.numberLabel}: {invoice.docNo} · {day(invoice.issuedOn)}</p>
+          <div className="sh-pills">
+            <span className="sh-pill">{invoice.paymentStatus}</span>
+            <span className="sh-pill">For {invoice.customer}</span>
+          </div>
+        </header>
+        <section className="sh-card">
+          <h2>{invoice.project}</h2>
+          <ul className="sh-ms">
+            {invoice.lines.map((line) => (
+              <li key={line.description}>
+                <div><p><b>{line.description}</b></p></div>
+                <div className="sh-right"><p className="sh-amount">{inr(line.amountMinor)}</p></div>
+              </li>
+            ))}
+          </ul>
+          <dl className="sh-totals">
+            <div><dt>Taxable value</dt><dd>{inr(invoice.taxableMinor)}</dd></div>
+            <div><dt>{invoice.taxLabel}</dt><dd>{inr(invoice.taxMinor)}</dd></div>
+            {invoice.roundOffMinor !== 0 ? <div><dt>Round off</dt><dd>{inr(invoice.roundOffMinor)}</dd></div> : null}
+            <div className="sh-grand"><dt>Total</dt><dd>{inr(invoice.grandMinor)}</dd></div>
+            <div><dt>Received</dt><dd>{inr(invoice.receivedMinor)}</dd></div>
+            <div><dt>Balance</dt><dd>{inr(invoice.balanceMinor)}</dd></div>
+          </dl>
+          <p><a className="sh-btn" href={`/s/${token}/invoice/${invoice.id}`} target="_blank" rel="noreferrer">Download the invoice (PDF)</a></p>
+        </section>
+        <footer className="sh-foot">This is a private page made for you by Shotlin. Please do not share the link. It stops working on {day(link.expiresAt.toISOString().slice(0, 10))}.</footer>
+      </main>
+    );
+  }
   const project = link && link.kind === 'project' ? await loadPublicProject(link.workspaceId, link.targetId) : null;
   if (!link || !project) return <Unavailable message="This link is no longer available." />;
 

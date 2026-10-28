@@ -4,6 +4,7 @@ import { getAuthContext } from '@/server/auth/config';
 import { verifySameOrigin } from '@/server/http/security';
 import { publishChange } from '@/server/realtime';
 import { driveConfigured } from '@/server/services/invoicing/driveState';
+import { archiveFrozenMasters } from '@/server/services/invoicing/frozen';
 import { loadGstInvoice, updateGstInvoice } from '@/server/services/invoicing/issue';
 import { gstInvoiceInputSchema } from '@/server/services/invoicing/validate';
 
@@ -61,7 +62,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     );
   }
   try {
-    const updated = await updateGstInvoice(context.workspaceId, invoiceId, parsed.data);
+    // "amend" and "reason" ride along with the invoice fields when an issued invoice is being changed.
+    const extra = body as { amend?: unknown; reason?: unknown };
+    const amend = extra.amend === true;
+    const reason = typeof extra.reason === 'string' ? extra.reason : '';
+    const before = amend ? await loadGstInvoice(context.workspaceId, invoiceId).catch(() => null) : null;
+    const updated = await updateGstInvoice(context.workspaceId, invoiceId, parsed.data, { amend, reason });
+    // The old PDF and Word master are filed away, so the next download shows the amended invoice.
+    if (before && updated.revision) await archiveFrozenMasters(context.workspaceId, before, updated.revision).catch(() => undefined);
     await publishChange(context.workspaceId, 'invoice.updated', invoiceId);
     return NextResponse.json(updated);
   } catch (error) {
