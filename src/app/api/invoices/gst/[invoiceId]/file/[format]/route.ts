@@ -1,9 +1,8 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { getAuthContext } from '@/server/auth/config';
-import { renderInvoiceDocx } from '@/server/services/invoicing/docx';
+import { invoiceFileBytes } from '@/server/services/invoicing/frozen';
 import { invoiceFileName, loadGstInvoice } from '@/server/services/invoicing/issue';
-import { renderInvoicePdf } from '@/server/services/invoicing/pdf';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -23,8 +22,9 @@ export async function GET(
   if (format !== 'pdf' && format !== 'docx') return NextResponse.json({ error: 'Unknown format' }, { status: 404 });
 
   try {
-    const { model } = await loadGstInvoice(context.workspaceId, invoiceId);
-    const bytes = format === 'pdf' ? await renderInvoicePdf(model) : await renderInvoiceDocx(model);
+    const invoice = await loadGstInvoice(context.workspaceId, invoiceId);
+    const { model } = invoice;
+    const bytes = await invoiceFileBytes(context.workspaceId, invoice, format);
     return new NextResponse(new Uint8Array(bytes), {
       headers: {
         'Content-Type': TYPES[format],

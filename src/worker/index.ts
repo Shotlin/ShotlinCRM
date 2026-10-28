@@ -24,6 +24,7 @@ const start = async () => {
     { driveConfigured },
     { getStorageHealth },
     { sweepStorageMigrations },
+    { runNightlyBackup },
   ] = await Promise.all([
     import('bullmq'),
     import('ioredis'),
@@ -41,6 +42,7 @@ const start = async () => {
     import('../server/services/invoicing/driveState'),
     import('../server/services/system/storageHealth'),
     import('../server/storage/connection'),
+    import('../server/storage/backup'),
   ]);
 
   const redisUrl = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379';
@@ -186,6 +188,17 @@ const start = async () => {
     void sweepStorageMigrations().catch((error) => console.error('Storage move failed', error));
   }, 5_000);
 
+  // One database backup a night into R2, keeping the newest seven. Checked every 30 minutes.
+  const backupTimer = setInterval(() => {
+    void (async () => {
+      const rows = await db.select({ id: workspaces.id }).from(workspaces);
+      for (const row of rows) {
+        const outcome = await runNightlyBackup(row.id);
+        if (outcome === 'done') console.log('[backup] database backup saved to R2');
+      }
+    })().catch((error) => console.error('[backup] failed', error instanceof Error ? error.message : error));
+  }, 30 * 60_000);
+
   const control = new IORedis.default(redisUrl, { maxRetriesPerRequest: null });
   await control.subscribe('shotlin:whatsapp:control');
   control.on('message', (_channel, raw) => {
@@ -228,6 +241,7 @@ const start = async () => {
     if (driveTimer) clearInterval(driveTimer);
     clearInterval(storageTimer);
     clearInterval(migrationTimer);
+    clearInterval(backupTimer);
     await whatsappManager.shutdown();
     await outboundWorker.close();
     await metaWorker.close();

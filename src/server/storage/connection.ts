@@ -1,6 +1,7 @@
 import { and, count, eq } from 'drizzle-orm';
 import { existsSync } from 'node:fs';
-import { readFile, stat } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { readFile, stat, unlink } from 'node:fs/promises';
 import { z } from 'zod';
 import { db } from '../db/client';
 import { messageMedia, storageConnections } from '../db/schema';
@@ -219,8 +220,35 @@ async function copyPass(workspaceId: string, config: BucketConfig, report?: (don
   return result;
 }
 
+// Deletes a file from this server's disk only after the bucket holds an identical copy:
+// same size, and the bytes hash to the checksum recorded when the file was received.
+export async function removeVerifiedLocalCopies(workspaceId: string, config: BucketConfig) {
+  const rows = await db
+    .select({ objectKey: messageMedia.objectKey, checksum: messageMedia.checksum })
+    .from(messageMedia)
+    .where(eq(messageMedia.workspaceId, workspaceId));
+  const outcome = { removed: 0, freedBytes: 0, kept: 0 };
+  for (const row of rows) {
+    const local = localMediaPath(row.objectKey);
+    if (!existsSync(local)) continue;
+    try {
+      const size = (await stat(local)).size;
+      const head = await headObjectInBucket(config, row.objectKey);
+      if (head?.sizeBytes !== size) throw new Error('not in the bucket yet');
+      const remote = await getObjectFromBucket(config, row.objectKey);
+      if (createHash('sha256').update(remote).digest('hex') !== row.checksum) throw new Error('bucket copy differs');
+      await unlink(local);
+      outcome.removed += 1;
+      outcome.freedBytes += size;
+    } catch {
+      outcome.kept += 1;
+    }
+  }
+  return outcome;
+}
+
 // Copies everything still on this server's disk into the bucket, then switches the workspace over.
-// Nothing on this server's disk is deleted. Safe to run again.
+// Once a copy is proven identical in the bucket, the server's copy is removed. Safe to run again.
 export async function runMigration(workspaceId: string) {
   const row = await loadRow(workspaceId);
   if (!row || row.state !== 'migrating') return null;
@@ -256,6 +284,7 @@ export async function runMigration(workspaceId: string) {
         updatedAt: new Date(),
       })
       .where(eq(storageConnections.workspaceId, workspaceId));
+    await removeVerifiedLocalCopies(workspaceId, config);
   }
   clearStorageCache(workspaceId);
   return result;

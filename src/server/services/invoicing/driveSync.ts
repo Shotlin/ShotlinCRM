@@ -2,11 +2,10 @@ import { and, asc, eq, sql } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { invoices, payments } from '../../db/schema';
 import { quarterFolderName } from './calc';
-import { renderInvoiceDocx } from './docx';
 import { chooseDestination, ledgerRow, pendingPromotion, pendingRow, seriesRow, type RowRequest } from './driveMap';
 import { driveConfigured } from './driveState';
+import { invoiceFileBytes } from './frozen';
 import { invoiceFileName, loadGstInvoice } from './issue';
-import { renderInvoicePdf } from './pdf';
 
 const MAX_ATTEMPTS = 8;
 const PDF_MIME = 'application/pdf';
@@ -80,7 +79,10 @@ export async function syncInvoice(workspaceId: string, invoiceId: string) {
   const prefix = loaded.cancelled ? 'CANCELLED_' : '';
   const pdfName = `${prefix}${invoiceFileName(model, 'pdf')}`;
   const docxName = `${prefix}${invoiceFileName(model, 'docx')}`;
-  const [pdfBytes, docxBytes] = await Promise.all([renderInvoicePdf(model), renderInvoiceDocx(model)]);
+  const [pdfBytes, docxBytes] = await Promise.all([
+    invoiceFileBytes(workspaceId, loaded, 'pdf'),
+    invoiceFileBytes(workspaceId, loaded, 'docx'),
+  ]);
 
   const saved = await callDrive<SavedFiles>('saveFiles', {
     docNo: loaded.docNo,
