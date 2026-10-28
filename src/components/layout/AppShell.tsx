@@ -3,7 +3,9 @@
 import {
   CalendarDays,
   ChartNoAxesCombined,
+  FileSignature,
   FileText,
+  FolderKanban,
   HardDrive,
   Landmark,
   LayoutDashboard,
@@ -30,6 +32,8 @@ const NAV_ITEMS = [
   { to: '/inbox', label: 'Inbox', icon: MessageSquareText },
   { to: '/clients', label: 'Clients', icon: Users },
   { to: '/proposals', label: 'Proposals', icon: FileText },
+  { to: '/agreements', label: 'Agreements', icon: FileSignature },
+  { to: '/projects', label: 'Projects', icon: FolderKanban },
   { to: '/invoices', label: 'Invoices', icon: ReceiptText },
   { to: '/finance', label: 'Finance', icon: ChartNoAxesCombined },
   { to: '/gst', label: 'GST returns', icon: Landmark },

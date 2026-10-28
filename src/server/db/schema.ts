@@ -475,6 +475,11 @@ export const projects = pgTable(
     clientId: text('client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
     leadId: text('lead_id').references(() => leads.id, { onDelete: 'set null' }),
     proposalId: text('proposal_id').references(() => proposals.id, { onDelete: 'set null' }),
+    // The signed agreement this project was created from.
+    agreementId: text('agreement_id'),
+    brief: text('brief').notNull().default(''),
+    // The timeline: planned blocks of work, shown to the client on the shared page.
+    roadmap: jsonb('roadmap').$type<{ id: string; title: string; detail: string; dueOn: string | null; status: 'planned' | 'in_progress' | 'done' }[]>().notNull().default([]),
     title: text('title').notNull(),
     status: text('status').notNull().default('active'),
     startsAt: timestamp('starts_at', { withTimezone: true }),
@@ -716,4 +721,75 @@ export const expenses = pgTable(
     createdAt: createdAt(),
   },
   (table) => [index('expenses_workspace_spent_idx').on(table.workspaceId, table.spentAt)],
+);
+
+// A proposal or agreement written outside the CRM and uploaded here with its cost and payment milestones.
+export const dealDocuments = pgTable(
+  'deal_documents',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+    clientId: text('client_id').references(() => clients.id, { onDelete: 'set null' }),
+    leadId: text('lead_id').references(() => leads.id, { onDelete: 'set null' }),
+    kind: text('kind').notNull(),
+    title: text('title').notNull(),
+    reference: text('reference').notNull().default(''),
+    status: text('status').notNull().default('draft'),
+    baseAmountMinor: bigint('base_amount_minor', { mode: 'number' }).notNull().default(0),
+    gstRatePct: integer('gst_rate_pct').notNull().default(18),
+    issuedOn: timestamp('issued_on', { withTimezone: true }),
+    signedOn: timestamp('signed_on', { withTimezone: true }),
+    // Target delivery length in days, counted from kickoff.
+    durationDays: integer('duration_days'),
+    brief: text('brief').notNull().default(''),
+    fileKey: text('file_key'),
+    fileName: text('file_name'),
+    fileSize: integer('file_size'),
+    // For an agreement written from a proposal.
+    sourceDocumentId: text('source_document_id'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [index('deal_documents_workspace_idx').on(table.workspaceId, table.kind)],
+);
+
+// The agreed payment schedule. It belongs to the document first and moves onto the project when one is created.
+export const projectMilestones = pgTable(
+  'project_milestones',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+    documentId: text('document_id').references(() => dealDocuments.id, { onDelete: 'cascade' }),
+    projectId: text('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull(),
+    title: text('title').notNull(),
+    trigger: text('trigger').notNull().default(''),
+    // Basis points: 3333 means 33.33%.
+    shareBp: integer('share_bp').notNull(),
+    baseMinor: bigint('base_minor', { mode: 'number' }).notNull(),
+    dueOn: timestamp('due_on', { withTimezone: true }),
+    status: text('status').notNull().default('planned'),
+    invoiceId: text('invoice_id').references(() => invoices.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+  },
+  (table) => [index('project_milestones_project_idx').on(table.projectId), index('project_milestones_document_idx').on(table.documentId)],
+);
+
+// A private link a client can open without logging in. Only a hash of the secret is stored.
+export const shareLinks = pgTable(
+  'share_links',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull(),
+    targetId: text('target_id').notNull(),
+    label: text('label').notNull().default(''),
+    tokenHash: text('token_hash').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    viewCount: integer('view_count').notNull().default(0),
+    lastViewedAt: timestamp('last_viewed_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (table) => [uniqueIndex('share_links_token_uidx').on(table.tokenHash), index('share_links_target_idx').on(table.workspaceId, table.kind, table.targetId)],
 );

@@ -217,6 +217,7 @@ export function GstInvoiceEditorPage() {
   const [cancelReason, setCancelReason] = useState('');
   const [numbering, setNumbering] = useState<NumberingState | null>(null);
   const [prefilled, setPrefilled] = useState(false);
+  const [milestoneId, setMilestoneId] = useState('');
 
   const load = async (id: string) => {
     const response = await fetch(`/api/invoices/gst/${id}`, { cache: 'no-store' });
@@ -272,7 +273,19 @@ export function GstInvoiceEditorPage() {
       ...(type === 'advance' || type === 'final' || type === 'regular' ? { docType: type } : {}),
       ...(client ? { clientId: client.id, customerName: client.company || client.name, cityStatePin: client.city || '' } : {}),
       ...(leadId ? { leadId } : {}),
+      // Raised from a project milestone: the project, amounts and wording come across ready to check.
+      ...(query.get('milestoneId')
+        ? {
+            projectName: query.get('project') ?? '',
+            projectTaxable: query.get('projectTotal') ?? '',
+            advanceTaxable: query.get('advance') ?? '',
+            reference: query.get('ref') ?? '',
+            advanceRef: query.get('advanceRef') ?? '',
+            lines: [{ id: `line-${Math.random().toString(36).slice(2)}`, description: query.get('line') ?? '', detail: '', qty: '1', unitPrice: query.get('amount') ?? '' }],
+          }
+        : {}),
     }));
+    if (query.get('milestoneId')) setMilestoneId(query.get('milestoneId') ?? '');
     // Start from the billing details used on this client's last invoice.
     if (client) {
       fetch(`/api/invoices/gst/last-billing?clientId=${encodeURIComponent(client.id)}`, { cache: 'no-store' })
@@ -414,7 +427,7 @@ export function GstInvoiceEditorPage() {
       const response = await fetch(invoiceId ? `/api/invoices/gst/${invoiceId}` : '/api/invoices/gst', {
         method: invoiceId ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(bodyFromForm(form)),
+        body: JSON.stringify(invoiceId ? bodyFromForm(form) : { ...bodyFromForm(form), ...(milestoneId ? { milestoneId } : {}) }),
       });
       const payload = (await response.json().catch(() => null)) as
         | { error?: string; issues?: { path: string; message: string }[]; id?: string; docNo?: string }

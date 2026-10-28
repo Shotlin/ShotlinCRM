@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getAuthContext } from '@/server/auth/config';
 import { verifySameOrigin } from '@/server/http/security';
 import { publishChange } from '@/server/realtime';
+import { linkMilestoneInvoice } from '@/server/services/deals/store';
 import { createGstInvoice } from '@/server/services/invoicing/issue';
 import { gstInvoiceInputSchema } from '@/server/services/invoicing/validate';
 
@@ -29,6 +30,9 @@ export async function POST(request: NextRequest) {
   }
   try {
     const created = await createGstInvoice(context.workspaceId, parsed.data);
+    // An invoice raised from a project milestone is linked back to it.
+    const milestoneId = (body as { milestoneId?: unknown }).milestoneId;
+    if (typeof milestoneId === 'string' && milestoneId) await linkMilestoneInvoice(context.workspaceId, milestoneId, created.id);
     await publishChange(context.workspaceId, 'invoice.created', created.id);
     return NextResponse.json(created, { status: 201 });
   } catch (error) {

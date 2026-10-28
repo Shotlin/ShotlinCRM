@@ -251,6 +251,18 @@ export async function getPrivateMedia(objectKey: string): Promise<Buffer> {
   return readFile(path.join(localRoot, objectKey));
 }
 
+// Removes a stored file: from the bucket when one is connected, otherwise from this server's disk.
+export async function deletePrivateMedia(objectKey: string) {
+  checkKey(objectKey);
+  const storage = await resolveStorage(workspaceOfKey(objectKey));
+  if (storage.mode === 's3') {
+    await deleteObjectFromBucket(storage.config, objectKey);
+    return;
+  }
+  const { unlink } = await import('node:fs/promises');
+  await unlink(path.join(localRoot, objectKey)).catch(() => undefined);
+}
+
 // The path of a media file on this server's disk, for the one-off move to the bucket.
 export const localMediaPath = (objectKey: string) => {
   checkKey(objectKey);
