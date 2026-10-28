@@ -315,7 +315,7 @@ for (const customer of Object.values(customers)) {
       id: `client-legacy-${customer.key}`,
       workspaceId,
       name: customer.name,
-      company: customer.company,
+      company: customer.name,
       phone: customer.phone ?? '',
       city: customer.city,
       notes: customer.notes,

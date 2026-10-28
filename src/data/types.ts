@@ -105,7 +105,7 @@ export type Invoice = {
   // and round-off, which is what payments are matched against.
   gst?: {
     docType: 'final' | 'advance' | 'regular';
-    series: 'INV' | 'ADV';
+    series: 'INV' | 'ADV' | 'REF';
     totalMinor: number;
     taxMinor: number;
     cancelled: boolean;

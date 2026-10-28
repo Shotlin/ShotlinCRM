@@ -85,6 +85,8 @@ export function invoiceDisplayStatus(
   if (invoice.gst?.cancelled) return 'cancelled';
   const balance = invoiceBalanceMinor(invoice, payments);
   const paid = invoicePaidMinor(invoice, payments);
+  // Nothing owed because nothing was billed is not "paid".
+  if (invoiceTotalMinor(invoice) === 0) return 'draft';
   if (balance === 0) return 'paid';
   if (isBefore(parseISO(invoice.dueAt), now)) return 'overdue';
   if (invoice.status === 'draft') return 'draft';

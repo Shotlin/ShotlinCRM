@@ -13,7 +13,11 @@ import {
 import { useCrmStore } from '../../../store/crmStore';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { useToast } from '../../../components/ui/Toast';
+import { DEFAULT_JURISDICTION_TERM } from '../../../server/services/invoicing/supplier';
+import type { NumberingState } from '../../../server/services/invoicing/numbering';
 import { PaymentDialog } from '../PaymentDialog';
+import { InvoicePreview } from './InvoicePreview';
+import { NumberingPanel } from './NumberingPanel';
 import { GST_STATES } from './states';
 
 type LineForm = { id: string; description: string; detail: string; qty: string; unitPrice: string };
@@ -105,7 +109,7 @@ const EMPTY: Form = {
 
 const TYPE_LABELS: Record<DocType, string> = {
   final: 'Final / balance tax invoice (INV)',
-  advance: 'Advance tax invoice / receipt voucher (ADV)',
+  advance: 'Advance payment request (becomes the receipt voucher, ADV, when paid)',
   regular: 'Regular tax invoice (INV)',
 };
 
@@ -211,6 +215,8 @@ export function GstInvoiceEditorPage() {
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  const [numbering, setNumbering] = useState<NumberingState | null>(null);
+  const [prefilled, setPrefilled] = useState(false);
 
   const load = async (id: string) => {
     const response = await fetch(`/api/invoices/gst/${id}`, { cache: 'no-store' });
@@ -238,6 +244,56 @@ export function GstInvoiceEditorPage() {
     const timer = setInterval(() => void load(invoiceId).catch(() => undefined), 5000);
     return () => clearInterval(timer);
   }, [invoiceId, driveWaiting]);
+
+
+  // Which numbers come next, and which advance requests are waiting for money.
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/invoices/gst/numbering', { cache: 'no-store' })
+      .then((response) => (response.ok ? (response.json() as Promise<NumberingState>) : null))
+      .then((state) => alive && setNumbering(state))
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [invoiceId, loaded?.docNo]);
+
+  // "New invoice" on a client opens this page with the client already chosen. Nothing is saved until Create draft.
+  useEffect(() => {
+    if (invoiceId || prefilled || clients.length === 0) return;
+    const query = new URLSearchParams(window.location.search);
+    const clientId = query.get('clientId');
+    const leadId = query.get('leadId');
+    const type = query.get('type');
+    const client = clients.find((item) => item.id === clientId);
+    setPrefilled(true);
+    setForm((current) => ({
+      ...current,
+      ...(type === 'advance' || type === 'final' || type === 'regular' ? { docType: type } : {}),
+      ...(client ? { clientId: client.id, customerName: client.company || client.name, cityStatePin: client.city || '' } : {}),
+      ...(leadId ? { leadId } : {}),
+    }));
+    // Start from the billing details used on this client's last invoice.
+    if (client) {
+      fetch(`/api/invoices/gst/last-billing?clientId=${encodeURIComponent(client.id)}`, { cache: 'no-store' })
+        .then((response) => (response.ok ? (response.json() as Promise<{ customer: GstInvoice['customer'] | null }>) : null))
+        .then((payload) => {
+          const last = payload?.customer;
+          if (!last) return;
+          setForm((current) => ({
+            ...current,
+            customerName: last.name,
+            representative: last.representative ?? '',
+            address: last.address,
+            cityStatePin: last.cityStatePin,
+            pan: last.pan ?? '',
+            gstin: last.gstin ?? '',
+            stateCode: last.stateCode,
+          }));
+        })
+        .catch(() => undefined);
+    }
+  }, [clients, invoiceId, prefilled]);
 
   const editable = !loaded || (loaded.status === 'draft' && !loaded.cancelled);
   const patch = <K extends keyof Form>(key: K, value: Form[K]) => setForm((current) => ({ ...current, [key]: value }));
@@ -297,6 +353,53 @@ export function GstInvoiceEditorPage() {
   }, [form]);
 
   const defaultTreatment = defaultGstTreatment(summary.supplyType, summary.placeOfSupply || 'the place of supply', summary.rate);
+
+
+  // The same fields as the saved invoice, so the preview shows exactly what the PDF and Word file will say.
+  const previewModel = useMemo<GstInvoice>(() => {
+    const optional = (value: string) => value.trim() || undefined;
+    const supplyType = deriveSupplyType(form.stateCode || '00');
+    const place = GST_STATES.find((state) => state.code === form.stateCode)?.name ?? '';
+    const rate = Math.round(Number(form.taxRatePct) || 0);
+    const terms = form.terms.split('\n').map((term) => term.trim()).filter(Boolean);
+    return {
+      docType: form.docType,
+      series: loaded?.invoice.series ?? 'REF',
+      serial: loaded?.invoice.serial ?? 0,
+      issuedAt: new Date(`${form.issuedAt || today()}T12:00:00+05:30`),
+      sac: form.sac,
+      supplyType,
+      taxRatePct: rate,
+      paymentTerms: form.paymentTerms.trim() || (form.docType === 'advance' ? 'Advance received / due before project kickoff' : 'Due before final delivery / handover'),
+      paymentStatus: loaded?.invoice.paymentStatus ?? (form.docType === 'advance' ? 'PAYMENT PENDING' : 'PAYABLE / DUE'),
+      customer: {
+        name: form.customerName,
+        representative: optional(form.representative),
+        address: form.address,
+        cityStatePin: form.cityStatePin,
+        pan: optional(form.pan),
+        gstin: optional(form.gstin),
+        placeOfSupply: place,
+        stateCode: form.stateCode,
+      },
+      project: {
+        name: form.projectName,
+        category: optional(form.category),
+        reference: optional(form.reference),
+        advanceRef: form.docType === 'final' ? optional(form.advanceRef) : undefined,
+        advanceNote: form.docType === 'advance' ? optional(form.advanceNote) : undefined,
+      },
+      lines: form.lines.map((line) => {
+        const qty = Math.max(1, Math.floor(Number(line.qty) || 1));
+        return { description: line.description, detail: optional(line.detail), qty, taxableMinor: qty * toMinor(line.unitPrice) };
+      }),
+      projectTaxableMinor: form.docType !== 'regular' && form.projectTaxable.trim() ? toMinor(form.projectTaxable) : undefined,
+      advanceTaxableMinor: form.docType !== 'regular' && form.advanceTaxable.trim() ? toMinor(form.advanceTaxable) : undefined,
+      gstTreatment: form.gstTreatment.trim() || defaultGstTreatment(supplyType, place || 'the place of supply', rate),
+      adjustmentNote: optional(form.adjustmentNote),
+      terms: terms.length ? terms : [DEFAULT_JURISDICTION_TERM],
+    };
+  }, [form, loaded]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -396,7 +499,7 @@ export function GstInvoiceEditorPage() {
                 : loaded.status === 'draft'
                   ? 'Draft: you can still edit it. Issuing locks it.'
                   : 'Issued: it can be paid or cancelled, but not edited.'
-              : 'The number is assigned when you save. Numbers never repeat.'}
+              : 'Nothing is saved until you press Create draft. Tax numbers are given later, so a draft you drop leaves no gap.'}
           </p>
         </div>
         <div className="editor-top-actions">
@@ -420,10 +523,10 @@ export function GstInvoiceEditorPage() {
               type="button"
               className="btn btn-primary"
               onClick={async () => {
-                if (await action('issue')) notify('Invoice issued');
+                if (await action('issue')) notify(loaded.invoice.docType === 'advance' ? 'Payment request marked as sent' : 'Invoice issued');
               }}
             >
-              <Send size={15} /> Mark as issued
+              <Send size={15} /> {loaded.invoice.docType === 'advance' ? 'Mark request as sent' : 'Mark as issued'}
             </button>
           ) : null}
           {loaded && loaded.status !== 'draft' && !loaded.cancelled ? (
@@ -726,8 +829,9 @@ export function GstInvoiceEditorPage() {
               {!cancelOpen ? (
                 <>
                   <p className="muted-copy">
-                    An invoice is never deleted, so the number sequence stays unbroken. A cancelled invoice keeps its
-                    number and is no longer owed. You can&apos;t cancel one that has payments recorded.
+                    {loaded.invoice.series === 'REF'
+                      ? 'This has no tax number yet, so cancelling it leaves no gap in your numbers. You can’t cancel one that has payments recorded.'
+                      : 'An issued invoice is never deleted, so the number sequence stays unbroken. A cancelled invoice keeps its number and is no longer owed. You can’t cancel one that has payments recorded.'}
                   </p>
                   <button type="button" className="btn btn-secondary" onClick={() => setCancelOpen(true)}>
                     <Ban size={15} /> Cancel invoice
@@ -763,8 +867,14 @@ export function GstInvoiceEditorPage() {
         </div>
 
         <aside className="gst-summary card" aria-label="Invoice summary">
+          <NumberingPanel
+            docType={form.docType}
+            numbering={numbering}
+            selfId={invoiceId}
+            loaded={loaded ? { docNo: loaded.docNo, series: loaded.invoice.series, status: loaded.status, cancelled: loaded.cancelled } : null}
+          />
           <span className="card-kicker">Summary</span>
-          <h2>{form.docType === 'advance' ? 'Advance tax invoice' : 'Tax invoice'}</h2>
+          <h2>{form.docType === 'advance' ? 'Advance payment' : 'Tax invoice'}</h2>
           <p className="gst-supply">
             {form.stateCode ? (summary.supplyType === 'intra' ? 'Same state: CGST + SGST' : 'Other state: IGST') : 'Place of supply not chosen'}
           </p>
@@ -801,6 +911,17 @@ export function GstInvoiceEditorPage() {
           </p>
         </aside>
       </form>
+
+      <section className="card gst-preview-card" aria-label="Live preview">
+        <div className="editor-section-head">
+          <div>
+            <span className="card-kicker">Preview</span>
+            <h2>What the customer will receive</h2>
+          </div>
+        </div>
+        <p className="muted-copy">This redraws as you type. The PDF and Word file are made from the same data.</p>
+        <InvoicePreview model={previewModel} docNoLabel={loaded ? loaded.docNo : form.docType === 'advance' ? 'REF given when saved' : 'Draft, no number yet'} />
+      </section>
 
       <PaymentDialog open={paymentOpen} onOpenChange={setPaymentOpen} invoices={invoices} initialInvoiceId={storeInvoice?.id} />
     </div>

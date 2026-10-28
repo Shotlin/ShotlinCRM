@@ -13,7 +13,8 @@ export type InvoiceLine = {
 
 export type GstInvoice = {
   docType: DocType;
-  series: 'INV' | 'ADV';
+  // REF is a draft reference: advance payment requests and unissued drafts. They get a real INV / ADV number later.
+  series: 'INV' | 'ADV' | 'REF';
   serial: number;
   issuedAt: Date;
   sac: string;
@@ -116,7 +117,7 @@ export function computeTotals(invoice: GstInvoice): Totals {
   rows.push(...taxRows);
   if (roundsToRupee) rows.push({ label: 'Round Off', valueMinor: roundOffMinor });
   rows.push({
-    label: invoice.docType === 'advance' ? 'TOTAL ADVANCE RECEIVED' : 'TOTAL PAYABLE',
+    label: invoice.docType === 'advance' ? (invoice.series === 'REF' ? 'TOTAL ADVANCE PAYABLE' : 'TOTAL ADVANCE RECEIVED') : 'TOTAL PAYABLE',
     valueMinor: grandMinor,
     kind: 'grand',
   });
@@ -217,7 +218,24 @@ export const supplyTypeLabel = (invoice: Pick<GstInvoice, 'supplyType'>) =>
 
 // ---------- Wording that depends on the document type ----------
 
-export function documentHeading(docType: DocType) {
+export function documentHeading(docType: DocType, series?: 'INV' | 'ADV' | 'REF') {
+  if (series === 'REF') {
+    return docType === 'advance'
+      ? {
+          title: 'PROFORMA INVOICE',
+          subtitle: 'ADVANCE PAYMENT REQUEST - NOT A TAX INVOICE',
+          numberLabel: 'Reference No',
+          dateLabel: 'Request Date',
+          footerKind: 'Advance Payment Request',
+        }
+      : {
+          title: 'DRAFT INVOICE',
+          subtitle: 'NOT YET ISSUED',
+          numberLabel: 'Draft Ref',
+          dateLabel: 'Draft Date',
+          footerKind: 'Draft',
+        };
+  }
   if (docType === 'advance') {
     return {
       title: 'ADVANCE TAX INVOICE',

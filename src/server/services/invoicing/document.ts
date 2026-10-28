@@ -31,7 +31,7 @@ export type InvoiceDocument = {
 
 export function buildInvoiceDocument(invoice: GstInvoice): InvoiceDocument {
   const totals = computeTotals(invoice);
-  const heading = documentHeading(invoice.docType);
+  const heading = documentHeading(invoice.docType, invoice.series);
   const docNo = documentNumber(invoice);
   const { customer, project } = invoice;
 

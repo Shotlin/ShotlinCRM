@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { db } from '../../db/client';
 import { clients, invoiceItems, invoiceSeries, invoices, leads, payments } from '../../db/schema';
@@ -50,10 +50,34 @@ export async function allocateSerial(tx: Tx, workspaceId: string, series: 'INV' 
     )
     .returning({ nextSerial: invoiceSeries.nextSerial });
   if (!row) {
-    throw new Error(
-      `The ${series} number series for ${fy} has not been set up yet. Import your existing register or set the starting number first.`,
-    );
+    // A new financial year starts again at 1, but only when an earlier year already exists, so a series is never guessed from nothing.
+    const [earlier] = await tx
+      .select({ fy: invoiceSeries.fy })
+      .from(invoiceSeries)
+      .where(and(eq(invoiceSeries.workspaceId, workspaceId), eq(invoiceSeries.series, series)))
+      .limit(1);
+    if (!earlier) {
+      throw new Error(
+        `The ${series} number series for ${fy} has not been set up yet. Import your existing register or set the starting number first.`,
+      );
+    }
+    await tx.insert(invoiceSeries).values({ workspaceId, series, fy, nextSerial: 2 }).onConflictDoNothing();
+    return 1;
   }
+  return row.nextSerial - 1;
+}
+
+// Drafts and advance payment requests carry a reference (SL/REF/26-27/7), not a tax number.
+// Their own counter starts at 1 in every financial year, so nothing has to be set up first.
+export async function allocateReference(tx: Tx, workspaceId: string, fy: string) {
+  const [row] = await tx
+    .insert(invoiceSeries)
+    .values({ workspaceId, series: 'REF', fy, nextSerial: 2 })
+    .onConflictDoUpdate({
+      target: [invoiceSeries.workspaceId, invoiceSeries.series, invoiceSeries.fy],
+      set: { nextSerial: sql`${invoiceSeries.nextSerial} + 1` },
+    })
+    .returning({ nextSerial: invoiceSeries.nextSerial });
   return row.nextSerial - 1;
 }
 
@@ -155,9 +179,10 @@ export async function importLegacyGstInvoice(
 export async function createGstInvoice(workspaceId: string, input: GstInvoiceInput) {
   const created = await db.transaction(async (tx) => {
     await assertClientAndLead(tx, workspaceId, input.clientId, input.leadId);
-    const series = seriesFor(input.docType);
+    // The real INV / ADV number is given later: an invoice gets INV when issued, an advance gets ADV when it is paid.
+    const series = 'REF' as const;
     const fy = financialYear(input.issuedAt).label;
-    const serial = await allocateSerial(tx, workspaceId, series, fy);
+    const serial = await allocateReference(tx, workspaceId, fy);
     const docNo = documentNumber({ series, serial, issuedAt: input.issuedAt });
     const id = `invoice-${randomUUID()}`;
     const fields = fieldsFromInput(input);
@@ -222,32 +247,53 @@ export async function updateGstInvoice(workspaceId: string, invoiceId: string, i
 }
 
 // Issuing locks the invoice: from here it can be paid or cancelled, but not rewritten.
+// A tax invoice takes the next INV number now. An advance is only a payment request until it is paid,
+// so it keeps its reference and takes the next ADV number at the moment the full advance arrives.
 export async function issueGstInvoice(workspaceId: string, invoiceId: string) {
-  const [updated] = await db
+  const result = await db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select()
+      .from(invoices)
+      .where(and(eq(invoices.id, invoiceId), eq(invoices.workspaceId, workspaceId), isNotNull(invoices.docType)))
+      .for('update')
+      .limit(1);
+    if (!existing) throw new Error('GST invoice not found');
+    if (existing.cancelledAt) throw new Error('A cancelled invoice cannot be issued');
+    if (existing.status !== 'draft') return { id: existing.id, docNo: existing.number, alreadyIssued: true };
+
+    let number = existing.number;
+    let serial = existing.serial;
+    let series = existing.series;
+    if (existing.docType !== 'advance' && existing.series === 'REF') {
+      series = 'INV';
+      serial = await allocateSerial(tx, workspaceId, 'INV', existing.fy ?? financialYear(existing.issuedAt).label);
+      number = documentNumber({ series: 'INV', serial, issuedAt: existing.issuedAt });
+    }
+    await tx.update(invoices).set({ status: 'sent', number, series, serial, updatedAt: new Date() }).where(eq(invoices.id, invoiceId));
+    return { id: existing.id, docNo: number, alreadyIssued: false };
+  });
+  if (!result.alreadyIssued) await markDriveDirty(workspaceId, invoiceId);
+  return result;
+}
+
+// Called inside the payment transaction. The first full payment of an advance request gives it the next ADV number,
+// dated the day the money arrived, so numbers follow the order in which advances are actually received.
+export async function promoteAdvanceIfPaid(
+  tx: Tx,
+  workspaceId: string,
+  invoice: typeof invoices.$inferSelect,
+  fullyPaid: boolean,
+  paidAt: Date,
+) {
+  if (!fullyPaid || invoice.series !== 'REF' || invoice.docType !== 'advance') return null;
+  const fy = financialYear(paidAt).label;
+  const serial = await allocateSerial(tx, workspaceId, 'ADV', fy);
+  const number = documentNumber({ series: 'ADV', serial, issuedAt: paidAt });
+  await tx
     .update(invoices)
-    .set({ status: 'sent', updatedAt: new Date() })
-    .where(
-      and(
-        eq(invoices.id, invoiceId),
-        eq(invoices.workspaceId, workspaceId),
-        eq(invoices.status, 'draft'),
-        isNotNull(invoices.docType),
-        isNull(invoices.cancelledAt),
-      ),
-    )
-    .returning({ id: invoices.id, number: invoices.number });
-  if (updated) {
-    await markDriveDirty(workspaceId, invoiceId);
-    return { id: updated.id, docNo: updated.number, alreadyIssued: false };
-  }
-  const [existing] = await db
-    .select({ id: invoices.id, number: invoices.number, status: invoices.status, cancelledAt: invoices.cancelledAt })
-    .from(invoices)
-    .where(and(eq(invoices.id, invoiceId), eq(invoices.workspaceId, workspaceId), isNotNull(invoices.docType)))
-    .limit(1);
-  if (!existing) throw new Error('GST invoice not found');
-  if (existing.cancelledAt) throw new Error('A cancelled invoice cannot be issued');
-  return { id: existing.id, docNo: existing.number, alreadyIssued: true };
+    .set({ series: 'ADV', serial, fy, number, issuedAt: paidAt, status: 'paid', updatedAt: new Date() })
+    .where(eq(invoices.id, invoice.id));
+  return { number, wasReference: invoice.number };
 }
 
 export async function cancelGstInvoice(workspaceId: string, invoiceId: string, reason: string) {

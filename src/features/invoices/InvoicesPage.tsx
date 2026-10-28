@@ -6,11 +6,10 @@ import {
   Clock3,
   Download,
   FilePlus2,
-  Plus,
   ReceiptText,
   Search,
 } from 'lucide-react';
-import { Link, useNavigate } from '../../lib/router';
+import { Link } from '../../lib/router';
 import { formatMoney } from '../../data/currencies';
 import { DEMO_NOW } from '../../data/demo';
 import type { InvoiceStatus } from '../../data/types';
@@ -27,7 +26,6 @@ import { PageHeader } from '../../components/layout/PageHeader';
 import { MetricCard } from '../../components/ui/MetricCard';
 import { StatusPill } from '../../components/ui/Badges';
 import { EmptyState } from '../../components/ui/EmptyState';
-import { useToast } from '../../components/ui/Toast';
 import { PaymentDialog } from './PaymentDialog';
 
 type PageTab = 'invoices' | 'payments';
@@ -43,10 +41,6 @@ export function InvoicesPage() {
   const payments = useCrmStore((state) => state.payments);
   const clients = useCrmStore((state) => state.clients);
   const reportingCurrency = useCrmStore((state) => state.reportingCurrency);
-  const createInvoice = useCrmStore((state) => state.createInvoice);
-  const flush = useCrmStore((state) => state.flush);
-  const navigate = useNavigate();
-  const { notify } = useToast();
 
   const finance = useMemo(
     () =>
@@ -118,13 +112,6 @@ export function InvoicesPage() {
     setPaymentOpen(true);
   };
 
-  const handleNew = async () => {
-    const invoice = createInvoice();
-    await flush();
-    notify('Draft invoice created');
-    navigate(`/invoices/${invoice.id}/edit`);
-  };
-
   return (
     <div className="page invoices-page">
       <PageHeader
@@ -140,9 +127,6 @@ export function InvoicesPage() {
               disabled={!hasOutstanding}
             >
               <CircleDollarSign size={15} /> Record payment
-            </button>
-            <button type="button" className="btn btn-secondary" onClick={handleNew}>
-              <Plus size={16} /> Plain invoice
             </button>
             <Link to="/invoices/gst/new" className="btn btn-primary">
               <FilePlus2 size={16} /> New GST invoice

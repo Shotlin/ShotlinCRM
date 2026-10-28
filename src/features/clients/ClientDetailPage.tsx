@@ -52,7 +52,6 @@ export function ClientDetailPage() {
   const payments = useCrmStore((state) => state.payments);
   const messages = useCrmStore((state) => state.messages);
   const createProposal = useCrmStore((state) => state.createProposal);
-  const createInvoice = useCrmStore((state) => state.createInvoice);
   const flush = useCrmStore((state) => state.flush);
   const reportingCurrency = useCrmStore((state) => state.reportingCurrency);
 
@@ -160,23 +159,11 @@ export function ClientDetailPage() {
     navigate(`/proposals/${proposal.id}/edit`);
   };
 
-  const newInvoice = async () => {
-    const invoice = createInvoice({
-      clientId: client.id,
-      leadId: latestLead?.id,
-      currency: latestLead?.currency ?? reportingCurrency,
-      lineItems: [
-        {
-          id: `line-${Date.now()}`,
-          description: 'Production',
-          quantity: 1,
-          unitPriceMinor: latestLead?.valueMinor ?? 0,
-        },
-      ],
-    });
-    await flush();
-    notify('Draft invoice created');
-    navigate(`/invoices/${invoice.id}/edit`);
+  // Opens the GST invoice form with this client chosen. Nothing is saved until you press Create draft.
+  const newInvoice = () => {
+    const query = new URLSearchParams({ clientId: client.id });
+    if (latestLead?.id) query.set('leadId', latestLead.id);
+    navigate(`/invoices/gst/new?${query.toString()}`);
   };
 
   return (
@@ -360,7 +347,7 @@ export function ClientDetailPage() {
                 </Link>
               ))}
               {relatedInvoices.slice(0, 2).map((invoice) => (
-                <Link to={`/invoices/${invoice.id}/edit`} key={invoice.id}>
+                <Link to={invoice.gst ? `/invoices/gst/${invoice.id}` : `/invoices/${invoice.id}/edit`} key={invoice.id}>
                   <CircleDollarSign size={15} />
                   <span>
                     <strong>{invoice.number}</strong>
@@ -464,7 +451,7 @@ export function ClientDetailPage() {
                     <td className="numeric">{formatMoney(invoiceBalanceMinor(invoice, payments), invoice.currency)}</td>
                     <td>{formatDate(invoice.dueAt)}</td>
                     <td>
-                      <Link to={`/invoices/${invoice.id}/edit`} className="icon-button row-open">
+                      <Link to={invoice.gst ? `/invoices/gst/${invoice.id}` : `/invoices/${invoice.id}/edit`} className="icon-button row-open">
                         <ArrowUpRight size={15} />
                       </Link>
                     </td>

@@ -11,7 +11,7 @@ export function gstModelFromRows(row: InvoiceRow, items: ItemRow[], receivedMino
 
   const model: GstInvoice = {
     docType: row.docType as DocType,
-    series: row.series as 'INV' | 'ADV',
+    series: row.series as 'INV' | 'ADV' | 'REF',
     serial: row.serial,
     issuedAt: row.issuedAt,
     sac: row.sac,

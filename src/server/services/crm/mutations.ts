@@ -1,6 +1,8 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { db } from '../../db/client';
+import { markDriveDirty } from '../invoicing/driveState';
+import { promoteAdvanceIfPaid } from '../invoicing/issue';
 import { gstModelFromRows } from '../invoicing/model';
 import {
   activityEvents,
@@ -101,6 +103,7 @@ export async function applyCrmAction(workspaceId: string, actorId: string, actio
   }
 
   let queuedMessageId: string | null = null;
+  let promotedInvoiceId: string | null = null;
   await db.transaction(async (tx) => {
     switch (action.type) {
       case 'lead.create': {
@@ -540,6 +543,10 @@ export async function applyCrmAction(workspaceId: string, actorId: string, actio
           note: payment.note,
         });
         const fullyPaid = paid + payment.amountMinor >= total;
+        // The first full payment of an advance request is what gives it its ADV number.
+        if (await promoteAdvanceIfPaid(tx, workspaceId, invoice, fullyPaid, new Date(payment.receivedAt))) {
+          promotedInvoiceId = invoice.id;
+        }
         if (invoice.leadId) {
           await tx
             .update(leads)
@@ -573,6 +580,8 @@ export async function applyCrmAction(workspaceId: string, actorId: string, actio
       }
     }
   });
+
+  if (promotedInvoiceId) await markDriveDirty(workspaceId, promotedInvoiceId).catch(() => undefined);
 
   if (queuedMessageId) {
     await enqueueAnalysisForMessage(workspaceId, queuedMessageId, 'crm_message').catch(
