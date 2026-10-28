@@ -320,7 +320,7 @@ export function AgreementEditorPage() {
                 {busy === 'project' ? <LoaderCircle className="spin" size={15} aria-hidden="true" /> : <FolderKanban size={15} aria-hidden="true" />} Create project
               </button>
               {!loaded.milestones.length ? <p className="bk-sub">Add and save the payment milestones first.</p> : null}
-              {loaded.status === 'client_signed' ? <p className="bk-sub">Approve the client's signature below first, then start the project.</p> : null}
+              {loaded.status === 'client_signed' ? <p className="bk-sub">Approve the client’s signature below first, then start the project.</p> : null}
             </div>
           )}
         </section>
