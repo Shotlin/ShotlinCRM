@@ -9,6 +9,7 @@ import {
   type DocType,
   type GstInvoice,
 } from './calc';
+import { markDriveDirty } from './driveState';
 import { gstModelFromRows } from './model';
 import { SUPPLIER, DEFAULT_JURISDICTION_TERM } from './supplier';
 import { deriveSupplyType, type GstInvoiceInput } from './validate';
@@ -107,7 +108,7 @@ const itemRows = (invoiceId: string, input: GstInvoiceInput) =>
   }));
 
 export async function createGstInvoice(workspaceId: string, input: GstInvoiceInput) {
-  return db.transaction(async (tx) => {
+  const created = await db.transaction(async (tx) => {
     await assertClientAndLead(tx, workspaceId, input.clientId, input.leadId);
     const series = seriesFor(input.docType);
     const fy = financialYear(input.issuedAt).label;
@@ -132,12 +133,14 @@ export async function createGstInvoice(workspaceId: string, input: GstInvoiceInp
     await tx.insert(invoiceItems).values(itemRows(id, input));
     return { id, docNo, serial, series, fy };
   });
+  await markDriveDirty(workspaceId, created.id);
+  return created;
 }
 
 // The number, series and financial year are fixed once allocated. A date that would move
 // the invoice into another financial year is refused instead of renumbering it.
 export async function updateGstInvoice(workspaceId: string, invoiceId: string, input: GstInvoiceInput) {
-  return db.transaction(async (tx) => {
+  const updated = await db.transaction(async (tx) => {
     const [existing] = await tx
       .select()
       .from(invoices)
@@ -169,6 +172,8 @@ export async function updateGstInvoice(workspaceId: string, invoiceId: string, i
     await tx.insert(invoiceItems).values(itemRows(invoiceId, input));
     return { id: invoiceId, docNo: existing.number };
   });
+  await markDriveDirty(workspaceId, invoiceId);
+  return updated;
 }
 
 // Issuing locks the invoice: from here it can be paid or cancelled, but not rewritten.
@@ -186,7 +191,10 @@ export async function issueGstInvoice(workspaceId: string, invoiceId: string) {
       ),
     )
     .returning({ id: invoices.id, number: invoices.number });
-  if (updated) return { id: updated.id, docNo: updated.number, alreadyIssued: false };
+  if (updated) {
+    await markDriveDirty(workspaceId, invoiceId);
+    return { id: updated.id, docNo: updated.number, alreadyIssued: false };
+  }
   const [existing] = await db
     .select({ id: invoices.id, number: invoices.number, status: invoices.status, cancelledAt: invoices.cancelledAt })
     .from(invoices)
@@ -198,7 +206,7 @@ export async function issueGstInvoice(workspaceId: string, invoiceId: string) {
 }
 
 export async function cancelGstInvoice(workspaceId: string, invoiceId: string, reason: string) {
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const [existing] = await tx
       .select()
       .from(invoices)
@@ -220,6 +228,8 @@ export async function cancelGstInvoice(workspaceId: string, invoiceId: string, r
       .where(eq(invoices.id, invoiceId));
     return { id: invoiceId, docNo: existing.number, alreadyCancelled: false };
   });
+  if (!result.alreadyCancelled) await markDriveDirty(workspaceId, invoiceId);
+  return result;
 }
 
 export async function loadGstInvoice(workspaceId: string, invoiceId: string) {
@@ -244,6 +254,7 @@ export async function loadGstInvoice(workspaceId: string, invoiceId: string) {
     docNo: row.number,
     clientId: row.clientId,
     status: row.status,
+    drive: row.driveFiles,
     cancelled: built.cancelled,
     totals: built.totals,
     receivedMinor,

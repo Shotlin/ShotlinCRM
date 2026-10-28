@@ -20,6 +20,8 @@ const start = async () => {
     { analyzeMessageFromRun },
     { enqueueAnalysisForMessage, markAnalysisRunFailed, reconcileQueuedRuns },
     { pool },
+    { sweepDriveSync },
+    { driveConfigured },
   ] = await Promise.all([
     import('bullmq'),
     import('ioredis'),
@@ -33,6 +35,8 @@ const start = async () => {
     import('../server/services/ai/analysis'),
     import('../server/services/ai/runs'),
     import('../server/db/client'),
+    import('../server/services/invoicing/driveSync'),
+    import('../server/services/invoicing/driveState'),
   ]);
 
   const redisUrl = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379';
@@ -152,6 +156,13 @@ const start = async () => {
     void reconcileQueuedRuns().catch(() => 0);
   }, 30_000);
 
+  // Keeps invoice PDFs and the master workbook in Drive up to date, one invoice at a time.
+  const driveTimer = driveConfigured()
+    ? setInterval(() => {
+        void sweepDriveSync().catch((error) => console.error('Drive sweep failed', error));
+      }, 15_000)
+    : undefined;
+
   const control = new IORedis.default(redisUrl, { maxRetriesPerRequest: null });
   await control.subscribe('shotlin:whatsapp:control');
   control.on('message', (_channel, raw) => {
@@ -191,6 +202,7 @@ const start = async () => {
   const shutdown = async () => {
     clearInterval(heartbeatTimer);
     clearInterval(reconcileTimer);
+    if (driveTimer) clearInterval(driveTimer);
     await whatsappManager.shutdown();
     await outboundWorker.close();
     await metaWorker.close();

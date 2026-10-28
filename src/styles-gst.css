@@ -208,3 +208,34 @@
     justify-content: center;
   }
 }
+
+.gst-drive {
+  margin: 0 0 14px;
+  padding: 9px 13px;
+  border-radius: 8px;
+  background: var(--soft);
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.gst-drive a,
+.gst-drive .text-link {
+  color: var(--blue);
+  font-weight: 600;
+}
+
+.gst-drive-synced {
+  background: var(--green-bg);
+  color: var(--green);
+}
+
+.gst-drive-synced a,
+.gst-drive-synced .text-link {
+  color: var(--green);
+}
+
+.gst-drive-failed {
+  background: var(--amber-bg);
+  color: var(--amber);
+}
+

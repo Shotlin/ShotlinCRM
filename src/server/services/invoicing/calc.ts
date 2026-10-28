@@ -252,3 +252,29 @@ export function derivePaymentStatus(docType: DocType, grandMinor: number, receiv
   if (receivedMinor >= grandMinor) return 'PAID IN FULL';
   return receivedMinor > 0 ? 'PARTIALLY PAID' : 'PAYABLE / DUE';
 }
+
+// ---------- Labels used in the Drive folders and the master workbook ----------
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// "2026-07-06", in Indian time.
+export function istDateIso(date: Date) {
+  const { year, month, day } = istParts(date);
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+// "Jul-26", the register's month label.
+export function monthLabel(date: Date) {
+  const { year, month } = istParts(date);
+  return `${MONTHS[month - 1]}-${String(year % 100).padStart(2, '0')}`;
+}
+
+// "Q3 (Oct-Dec 2026)", the name of the quarter folder in Drive.
+export function quarterFolderName(date: Date) {
+  const { year } = istParts(date);
+  return quarterLabel(date).replace(')', ` ${year})`);
+}
+
+// "FY26-27", as the register writes the financial year.
+export const fyLabel = (date: Date) => `FY${financialYear(date).label}`;
+

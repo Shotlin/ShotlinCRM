@@ -1,6 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { db } from '../../db/client';
+import { gstModelFromRows } from '../invoicing/model';
 import {
   activityEvents,
   calendarEvents,
@@ -514,11 +515,13 @@ export async function applyCrmAction(workspaceId: string, actorId: string, actio
         if (!invoice) throw new Error('Invoice not found in this workspace');
         if (invoice.status === 'draft') throw new Error('Draft invoices cannot receive payments');
 
-        const items = await tx
-          .select({ quantity: invoiceItems.quantity, unitPriceMinor: invoiceItems.unitPriceMinor })
-          .from(invoiceItems)
-          .where(eq(invoiceItems.invoiceId, invoice.id));
-        const total = items.reduce((sum, item) => sum + item.quantity * item.unitPriceMinor, 0);
+        if (invoice.cancelledAt) throw new Error('A cancelled invoice cannot receive payments');
+        const items = await tx.select().from(invoiceItems).where(eq(invoiceItems.invoiceId, invoice.id));
+        // A GST invoice is owed its tax-inclusive, rounded total, not just the line items.
+        const gst = gstModelFromRows(invoice, items, 0);
+        const total = gst
+          ? gst.totals.grandMinor
+          : items.reduce((sum, item) => sum + item.quantity * item.unitPriceMinor, 0);
         const [paidRow] = await tx
           .select({ paid: sql<number>`coalesce(sum(${payments.amountMinor}), 0)::bigint` })
           .from(payments)

@@ -5,6 +5,7 @@ import { applyCrmAction } from '@/server/services/crm/mutations';
 import { crmActionSchema } from '@/server/services/crm/schemas';
 import { verifySameOrigin } from '@/server/http/security';
 import { publishChange } from '@/server/realtime';
+import { markDriveDirty } from '@/server/services/invoicing/driveState';
 
 export async function POST(request: NextRequest) {
   if (!verifySameOrigin(request)) {
@@ -27,6 +28,10 @@ export async function POST(request: NextRequest) {
 
   try {
     const result = await applyCrmAction(context.workspaceId, context.userId, parsed.data);
+    // A payment on a GST invoice changes its register row, ledger and PDF status.
+    if (parsed.data.type === 'payment.record') {
+      await markDriveDirty(context.workspaceId, parsed.data.payload.payment.invoiceId).catch(() => undefined);
+    }
     await publishChange(context.workspaceId, 'crm.updated', parsed.data.type);
     return NextResponse.json(result);
   } catch (error) {

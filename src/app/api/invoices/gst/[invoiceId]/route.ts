@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getAuthContext } from '@/server/auth/config';
 import { verifySameOrigin } from '@/server/http/security';
 import { publishChange } from '@/server/realtime';
+import { driveConfigured } from '@/server/services/invoicing/driveState';
 import { loadGstInvoice, updateGstInvoice } from '@/server/services/invoicing/issue';
 import { gstInvoiceInputSchema } from '@/server/services/invoicing/validate';
 
@@ -22,6 +23,15 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       receivedMinor: loaded.receivedMinor,
       grandMinor: loaded.totals.grandMinor,
       invoice: loaded.model,
+      drive: {
+        configured: driveConfigured(),
+        state: loaded.drive?.state ?? null,
+        pdfUrl: loaded.drive?.pdfUrl ?? null,
+        docxUrl: loaded.drive?.docxUrl ?? null,
+        folderName: loaded.drive?.folderName ?? null,
+        syncedAt: loaded.drive?.syncedAt ?? null,
+        error: loaded.drive?.error ?? null,
+      },
     });
   } catch {
     return NextResponse.json({ error: 'GST invoice not found' }, { status: 404 });

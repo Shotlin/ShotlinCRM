@@ -54,6 +54,15 @@ type Loaded = {
   grandMinor: number;
   clientId: string;
   invoice: GstInvoiceJson;
+  drive: {
+    configured: boolean;
+    state: 'pending' | 'synced' | 'failed' | null;
+    pdfUrl: string | null;
+    docxUrl: string | null;
+    folderName: string | null;
+    syncedAt: string | null;
+    error: string | null;
+  };
 };
 
 // Dates arrive as strings over JSON.
@@ -221,6 +230,14 @@ export function GstInvoiceEditorPage() {
       .catch(() => setMissing(true))
       .finally(() => setLoading(false));
   }, [invoiceId]);
+
+  // While the worker is sending the invoice to Drive, check back every few seconds.
+  const driveWaiting = loaded?.drive.configured && (loaded.drive.state === 'pending' || loaded.drive.state === 'failed');
+  useEffect(() => {
+    if (!invoiceId || !driveWaiting) return;
+    const timer = setInterval(() => void load(invoiceId).catch(() => undefined), 5000);
+    return () => clearInterval(timer);
+  }, [invoiceId, driveWaiting]);
 
   const editable = !loaded || (loaded.status === 'draft' && !loaded.cancelled);
   const patch = <K extends keyof Form>(key: K, value: Form[K]) => setForm((current) => ({ ...current, [key]: value }));
@@ -416,6 +433,40 @@ export function GstInvoiceEditorPage() {
           ) : null}
         </div>
       </div>
+
+      {loaded ? (
+        <p className={`gst-drive gst-drive-${loaded.drive.configured ? (loaded.drive.state ?? 'pending') : 'off'}`}>
+          {!loaded.drive.configured ? (
+            'Google Drive link is not set up yet. Downloads still work.'
+          ) : loaded.drive.state === 'synced' ? (
+            <>
+              Saved to Drive{loaded.drive.folderName ? ` · ${loaded.drive.folderName}` : ''} and the master workbook.{' '}
+              {loaded.drive.pdfUrl ? (
+                <a href={loaded.drive.pdfUrl} target="_blank" rel="noreferrer">Open PDF</a>
+              ) : null}
+              {loaded.drive.docxUrl ? (
+                <>
+                  {' · '}
+                  <a href={loaded.drive.docxUrl} target="_blank" rel="noreferrer">Open Word</a>
+                </>
+              ) : null}
+            </>
+          ) : loaded.drive.state === 'failed' ? (
+            <>
+              Drive sync is retrying: {loaded.drive.error ?? 'unknown problem'}{' '}
+              <button type="button" className="text-link" onClick={() => void action('sync')}>Sync now</button>
+            </>
+          ) : (
+            'Sending to Drive and the master workbook…'
+          )}
+          {loaded.drive.configured && loaded.drive.state === 'synced' ? (
+            <>
+              {' · '}
+              <button type="button" className="text-link" onClick={() => void action('sync')}>Sync again</button>
+            </>
+          ) : null}
+        </p>
+      ) : null}
 
       {errors.length ? (
         <div className="form-error editor-error" role="alert">

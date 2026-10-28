@@ -228,7 +228,19 @@ export const invoices = pgTable(
     // Issued invoices are cancelled, never deleted, so the number sequence stays unbroken.
     cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
     cancelReason: text('cancel_reason'),
-    driveFiles: jsonb('drive_files').$type<{ pdfId?: string; docxId?: string; syncedAt?: string }>(),
+    driveFiles: jsonb('drive_files').$type<{
+      state?: 'pending' | 'synced' | 'failed';
+      pdfId?: string;
+      docxId?: string;
+      pdfUrl?: string;
+      docxUrl?: string;
+      destination?: 'pending' | 'quarter';
+      folderName?: string;
+      syncedAt?: string;
+      error?: string | null;
+      attempts?: number;
+      nextAttemptAt?: string | null;
+    }>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
