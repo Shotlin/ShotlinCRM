@@ -9,6 +9,7 @@ import '../styles-gst.css';
 import '../styles-storage.css';
 import '../styles-books.css';
 import '../styles-share.css';
+import '../styles/globals.css';
 
 export const metadata: Metadata = {
   title: 'Shotlin CRM',

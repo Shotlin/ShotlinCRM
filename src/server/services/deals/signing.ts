@@ -5,7 +5,7 @@ import path from 'node:path';
 import PDFDocument from 'pdfkit';
 import { PDFDocument as LibDocument, StandardFonts, rgb } from 'pdf-lib';
 import { db } from '../../db/client';
-import { clients, dealDocuments, documentSignatures, leads, projectMilestones, workspaces } from '../../db/schema';
+import { clients, dealDocuments, documentSignatures, leads, projectMilestones, projects, workspaces } from '../../db/schema';
 import { deletePrivateMedia, getPrivateMedia, putPrivateMedia } from '../../storage';
 import { SUPPLIER } from '../invoicing/supplier';
 import type { SignField } from './fields';
@@ -285,6 +285,12 @@ export async function countersign(workspaceId: string, documentId: string, input
     documentSha256: fingerprint,
     signedAt,
   });
+  // A final delivery record completes its linked project only after the client
+  // and Shotlin have both signed the exact locked PDF.
+  await db
+    .update(projects)
+    .set({ status: 'completed', completedAt: signedAt, updatedAt: signedAt })
+    .where(and(eq(projects.workspaceId, workspaceId), eq(projects.completionDocumentId, doc.id)));
   await swap.cleanup();
 }
 

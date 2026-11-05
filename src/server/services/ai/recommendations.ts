@@ -80,7 +80,7 @@ export async function syncRecommendations(workspaceId: string, now = new Date())
   }));
   const derived = deriveOperationalRecommendations({
     now,
-    leads: snapshot.leads,
+    leads: [...snapshot.leads, ...snapshot.chats],
     clients: snapshot.clients,
     messages: snapshot.messages,
     conversations: conversationRows.map((conversation) => ({

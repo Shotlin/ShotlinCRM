@@ -481,6 +481,8 @@ export const projects = pgTable(
     proposalId: text('proposal_id').references(() => proposals.id, { onDelete: 'set null' }),
     // The signed agreement this project was created from.
     agreementId: text('agreement_id'),
+    // The final delivery and acceptance record created when the work is ready for handover.
+    completionDocumentId: text('completion_document_id'),
     brief: text('brief').notNull().default(''),
     // The timeline: planned blocks of work, shown to the client on the shared page.
     roadmap: jsonb('roadmap').$type<{ id: string; title: string; detail: string; dueOn: string | null; status: 'planned' | 'in_progress' | 'done' }[]>().notNull().default([]),

@@ -42,7 +42,7 @@ export async function loadContactEvidence(
   leadId: string,
 ): Promise<ContactEvidence> {
   const snapshot = await loadCrmSnapshot(workspaceId);
-  const lead = snapshot.leads.find((item) => item.id === leadId);
+  const lead = [...snapshot.leads, ...snapshot.chats].find((item) => item.id === leadId);
   if (!lead) throw new Error('Lead not found in this workspace');
   const client = lead.clientId
     ? snapshot.clients.find((item) => item.id === lead.clientId) ?? null

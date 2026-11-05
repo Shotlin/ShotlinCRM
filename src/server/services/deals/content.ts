@@ -64,3 +64,23 @@ export function starterBlocks(kind: 'proposal' | 'agreement'): Block[] {
     block('p', 'Each party keeps the other\'s non-public information confidential. Liability is limited to the amount paid under this Agreement. Disputes are resolved by written negotiation and then arbitration in Kolkata, West Bengal.'),
   ];
 }
+
+// The final document is deliberately separate from the commercial agreement. It records
+// what was handed over and gives the client a clear, auditable acceptance action.
+export function completionBlocks(input: { projectTitle: string; clientName: string; brief: string; deliverables: string[] }) : Block[] {
+  const delivered = input.deliverables.filter(Boolean);
+  return [
+    block('h1', 'Project completion and delivery acceptance'),
+    block('p', `This Delivery Acceptance Record confirms the completion and handover of “${input.projectTitle}” by Shotlin Digital Product Studio to ${input.clientName || 'the Client'}. It is read together with the project agreement and records final client acceptance of the delivered work.`),
+    block('h1', '1. Delivery summary'),
+    block('p', input.brief || 'The agreed project scope, configuration, documentation and handover materials have been completed and made available to the Client.'),
+    block('h1', '2. Items delivered'),
+    block('bullets', delivered.length ? delivered.join('\n') : 'Completed project deliverables\nProduction handover and access details\nProject documentation and final walkthrough'),
+    block('h1', '3. Client acceptance'),
+    block('p', 'By signing this record, the Client confirms that it has received the deliverables listed above, has had a reasonable opportunity to review them, and accepts the completed work as delivered. Any agreed post-delivery support continues only under the original agreement or a separately agreed support arrangement.'),
+    block('h1', '4. Handover and responsibilities'),
+    block('bullets', 'The Client confirms receipt of the relevant access, files and handover information.\nThe Client is responsible for protecting its own passwords, domains, third-party accounts and production data after handover.\nAny new scope, enhancement or change after this acceptance is handled as a new written request.'),
+    block('h1', '5. Final record'),
+    block('p', 'This digitally signed record becomes the final completion record for the project. The signed PDF is locked, retained with the project and cannot be changed without creating a new document.'),
+  ];
+}

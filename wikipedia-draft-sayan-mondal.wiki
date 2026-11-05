@@ -1,0 +1,64 @@
+{{User sandbox}}
+<!-- EDIT BELOW THIS LINE -->
+{{AfC submission/draft}}
+{{Infobox person
+| name        = Sayan Mondal
+| birth_date  = <!-- {{birth date and age|YYYY|MM|DD}} ONLY if a reliable source states it -->
+| birth_place = <!-- from source -->
+| nationality = Indian
+| occupation  = Entrepreneur, software developer
+| known_for   = Founder of [[#Shotlin|Shotlin]] and [[#Opslin|Opslin]]
+| website     = {{URL|https://www.opslin.com}}
+}}
+
+'''Sayan Mondal''' is an Indian entrepreneur and software developer. He is the founder of '''Shotlin''', a digital product studio, and the founder and chief executive officer of '''Opslin''', a platform for deploying software to virtual private servers.<ref name="IND1">{{cite news |title=[INDEPENDENT SOURCE REQUIRED] |work=[OUTLET] |date=[DATE] |url=[URL]}}</ref>
+
+== Early life and education ==
+<!-- Include ONLY what an independent source states: place of birth, education. Remove this section if no source exists. -->
+[SOURCE REQUIRED]
+
+== Career ==
+
+=== Shotlin ===
+Mondal founded '''Shotlin''', a digital product studio that designs and builds websites, mobile applications and business software for clients.<ref name="IND2">[INDEPENDENT SOURCE REQUIRED: coverage of Shotlin]</ref>
+<!-- Add, each with an independent source: founding year; location; team size; notable projects (named only with the client's written permission); technologies used (e.g. languages and frameworks) as stated in coverage. -->
+
+==== Selected projects ====
+<!-- One sentence per project, as described in independent coverage: what it is, for whom, when. Do not list clients who have not agreed to be named. -->
+* [PROJECT 1 — SOURCE REQUIRED]
+* [PROJECT 2 — SOURCE REQUIRED]
+
+=== Opslin ===
+Mondal is the founder and chief executive officer of '''Opslin''', a managed deployment platform that lets developers and teams deploy websites, APIs and backend software to Linux servers they own or rent, rather than to servers hosted by the platform.<ref name="IND3">[INDEPENDENT SOURCE REQUIRED: coverage of Opslin]</ref> The service connects to a customer's server through an outbound agent and provides domain and SSL setup, monitoring, logs and rollback to a previous release.<ref name="OPS">{{cite web |url=https://www.opslin.com/ |title=VPS Deployment Platform — Deploy to Your Own Server |website=Opslin |access-date=2026-11-04}}</ref> The company has described the product as being in beta, and has announced plans for a server-discovery tool and a software marketplace.<ref name="OPS" />
+
+== Recognition ==
+<!-- Awards, press features, talks, with independent sources only. Delete this section if there are none. -->
+[SOURCE REQUIRED]
+
+== Personal life ==
+<!-- Include only if a reliable source covers it and you are comfortable with it being public. Otherwise delete. -->
+
+== References ==
+{{reflist}}
+
+== External links ==
+* {{official website|https://www.opslin.com}}
+
+{{Authority control}}
+
+[[Category:Living people]]
+[[Category:Indian company founders]]
+[[Category:Indian software engineers]]
+[[Category:21st-century Indian businesspeople]]
+
+<!--
+DO NOT SUBMIT UNTIL:
+1. Every [SOURCE REQUIRED] is replaced by a citation to a reliable, independent source
+   (news, magazine, book). LinkedIn, GitHub, your own sites and press releases do NOT count.
+   The opslin.com citation ("OPS") may support plain facts about the product, but cannot
+   show that you or Opslin are notable.
+2. At least 3 independent sources give significant coverage of YOU (not only of the company).
+3. Wording stays neutral: no "leading", "innovative", "highly skilled", client counts or
+   capability claims unless a source says it, and then attribute it ("according to ...").
+4. COI declared on User:Sayanthecoder, then submit with {{subst:submit}}.
+-->

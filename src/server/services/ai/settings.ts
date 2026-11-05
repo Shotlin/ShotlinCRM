@@ -206,11 +206,14 @@ export async function testAiProvider(
   };
 
   try {
-    await callStructured(config, {
+    const result = await callStructured(config, {
       system: 'Return one JSON object. Do not use tools.',
       user: 'Return JSON exactly {"ok":true}.',
-      maxTokens: 40,
+      maxTokens: 1024,
     });
+    if (typeof result.data !== 'object' || result.data === null || (result.data as { ok?: unknown }).ok !== true) {
+      throw new AiProviderError('The AI provider did not return the expected test response', true, 'invalid_test_response');
+    }
     if (row) {
       await db
         .update(aiProviderSettings)

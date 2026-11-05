@@ -6,7 +6,7 @@ import { clients, dealDocuments, invoiceItems, invoices, leads, payments, projec
 import { deletePrivateMedia, putPrivateMedia } from '../../storage';
 import { gstModelFromRows } from '../invoicing/model';
 import { gstOf, shareBp } from './milestones';
-import type { Block } from './content';
+import { completionBlocks, type Block } from './content';
 import { renderDealPdf, renderStoredDeal } from './render';
 import { isDocumentLocked, LOCKED_NOTE } from './signing';
 
@@ -374,6 +374,64 @@ export async function updateProject(workspaceId: string, id: string, patch: z.in
   if (result.length === 0) throw new Error('Project not found');
 }
 
+// Creates the final handover record from the real project data. It is a normal
+// signable agreement document, but is linked back to the project and therefore
+// cannot get lost amongst unrelated agreements.
+export async function createProjectCompletionDocument(
+  workspaceId: string,
+  projectId: string,
+  uploaded?: { buffer: Buffer; filename: string },
+) {
+  const [project] = await db
+    .select()
+    .from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.workspaceId, workspaceId)))
+    .limit(1);
+  if (!project) throw new Error('Project not found');
+  if (project.completionDocumentId) return project.completionDocumentId;
+
+  const milestones = await db.select().from(projectMilestones).where(eq(projectMilestones.projectId, projectId)).orderBy(asc(projectMilestones.position));
+  if (milestones.length > 0 && milestones.some((m) => m.status !== 'delivered' && m.status !== 'accepted')) {
+    throw new Error('Mark every project milestone as delivered or accepted before preparing the final delivery sign-off');
+  }
+  const [client] = await db.select().from(clients).where(and(eq(clients.id, project.clientId), eq(clients.workspaceId, workspaceId))).limit(1);
+  if (!client) throw new Error('Client not found');
+  const [agreement] = project.agreementId
+    ? await db.select({ baseAmountMinor: dealDocuments.baseAmountMinor, gstRatePct: dealDocuments.gstRatePct }).from(dealDocuments).where(eq(dealDocuments.id, project.agreementId)).limit(1)
+    : [];
+  const id = `deal-${randomUUID()}`;
+  const clientName = client.company || client.name;
+  const blocks = completionBlocks({
+    projectTitle: project.title,
+    clientName,
+    brief: project.brief,
+    deliverables: [...project.roadmap.filter((r) => r.status === 'done').map((r) => r.title), ...milestones.map((m) => m.title)],
+  });
+  await db.transaction(async (tx) => {
+    await tx.insert(dealDocuments).values({
+      id,
+      workspaceId,
+      clientId: client.id,
+      kind: 'agreement',
+      title: `Project completion & delivery acceptance — ${project.title}`.slice(0, 300),
+      reference: `Completion record · ${project.title}`.slice(0, 120),
+      status: 'draft',
+      baseAmountMinor: agreement?.baseAmountMinor ?? milestones.reduce((sum, m) => sum + m.baseMinor, 0),
+      gstRatePct: agreement?.gstRatePct ?? 18,
+      issuedOn: new Date(),
+      brief: project.brief,
+      // Keep the standard written record when no file is provided. When the owner
+      // supplies their own final delivery agreement, that PDF is the source of truth.
+      content: uploaded ? null : blocks,
+      sourceDocumentId: project.agreementId ?? null,
+    });
+    await tx.update(projects).set({ completionDocumentId: id, updatedAt: new Date() }).where(and(eq(projects.id, projectId), eq(projects.workspaceId, workspaceId)));
+  });
+  if (uploaded) await attachDealFile(workspaceId, id, uploaded.buffer, uploaded.filename);
+  else await regenerateWrittenPdf(workspaceId, id);
+  return id;
+}
+
 export async function updateMilestone(workspaceId: string, projectId: string, milestoneId: string, patch: z.infer<typeof milestonePatchSchema>) {
   const set: Partial<typeof projectMilestones.$inferInsert> = {};
   if (patch.title !== undefined) set.title = patch.title;
@@ -482,6 +540,9 @@ export async function getProjectDetail(workspaceId: string, id: string) {
   const [agreement] = project.agreementId
     ? await db.select({ id: dealDocuments.id, title: dealDocuments.title, gstRatePct: dealDocuments.gstRatePct, hasFile: sql<boolean>`${dealDocuments.fileKey} is not null` }).from(dealDocuments).where(eq(dealDocuments.id, project.agreementId)).limit(1)
     : [];
+  const [completion] = project.completionDocumentId
+    ? await db.select({ id: dealDocuments.id, title: dealDocuments.title, status: dealDocuments.status }).from(dealDocuments).where(and(eq(dealDocuments.id, project.completionDocumentId), eq(dealDocuments.workspaceId, workspaceId))).limit(1)
+    : [];
   const rate = agreement?.gstRatePct ?? 18;
   return {
     id: project.id,
@@ -493,6 +554,7 @@ export async function getProjectDetail(workspaceId: string, id: string) {
     roadmap: project.roadmap,
     client: { id: client.id, name: client.name, company: client.company },
     agreement: agreement ? { id: agreement.id, title: agreement.title, hasFile: agreement.hasFile } : null,
+    completion: completion ?? null,
     gstRatePct: rate,
     milestones: ms.map((m, index) => {
       const invoice = invoiceRows.find((i) => i.id === m.invoiceId);

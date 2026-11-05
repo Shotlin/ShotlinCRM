@@ -106,9 +106,9 @@ export async function loadAiDashboard(
       now,
     }),
   );
-  const recommendations = (await loadOpenRecommendations(workspaceId, snapshot.leads, now))
+  const recommendations = (await loadOpenRecommendations(workspaceId, [...snapshot.leads, ...snapshot.chats], now))
     .map((recommendation) => withAgeLabel(recommendation, now));
-  const leadById = new Map(snapshot.leads.map((lead) => [lead.id, lead]));
+  const leadById = new Map([...snapshot.leads, ...snapshot.chats].map((lead) => [lead.id, lead]));
   const overdueInvoices = snapshot.invoices.filter(
     (invoice) =>
       invoice.status === 'sent' &&
@@ -243,7 +243,7 @@ export async function loadAiContact(
 ): Promise<AiContactDetail> {
   await syncRecommendations(workspaceId, now);
   const snapshot = await loadCrmSnapshot(workspaceId);
-  const lead = snapshot.leads.find((item) => item.id === leadId);
+  const lead = [...snapshot.leads, ...snapshot.chats].find((item) => item.id === leadId);
   if (!lead) throw new Error('Lead not found in this workspace');
   const [conversationRows, projectRows, analysisRows, briefRows, draftRows, settingView] =
     await Promise.all([
@@ -282,7 +282,7 @@ export async function loadAiContact(
     now,
   });
   const recommendations = (
-    await loadOpenRecommendations(workspaceId, snapshot.leads, now)
+    await loadOpenRecommendations(workspaceId, [...snapshot.leads, ...snapshot.chats], now)
   ).filter(
     (recommendation) =>
       recommendation.leadId === leadId ||

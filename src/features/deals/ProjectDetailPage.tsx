@@ -1,7 +1,10 @@
 'use client';
 
-import { ArrowLeft, CalendarClock, Check, FilePlus2, FileSignature, FileText, LoaderCircle, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, CalendarClock, Check, FileCheck2, FilePlus2, FileSignature, FileText, LoaderCircle, Plus, Trash2 } from 'lucide-react';
+import { RiFileCheckLine } from '@remixicon/react';
 import { useCallback, useEffect, useState } from 'react';
+import { Button } from '@/components/base/buttons/button';
+import { FileUpload } from '@/components/base/file-upload/file-upload';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { MetricCard } from '@/components/ui/MetricCard';
 import { Link, useParams } from '@/lib/router';
@@ -33,6 +36,7 @@ type Detail = {
   roadmap: RoadmapItem[];
   client: { id: string; name: string; company: string };
   agreement: { id: string; title: string; hasFile: boolean } | null;
+  completion: { id: string; title: string; status: string } | null;
   gstRatePct: number;
   milestones: Milestone[];
 };
@@ -50,6 +54,8 @@ export function ProjectDetailPage() {
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [preparingCompletion, setPreparingCompletion] = useState(false);
+  const [deliveryAgreement, setDeliveryAgreement] = useState<File | null>(null);
   const [extra, setExtra] = useState({ title: '', trigger: '', amount: '', dueOn: '', status: 'planned' as Milestone['status'] });
 
   const load = useCallback(async () => {
@@ -145,6 +151,18 @@ export function ProjectDetailPage() {
     else await load();
   };
 
+  const prepareCompletion = async () => {
+    setPreparingCompletion(true);
+    setError('');
+    const body = new FormData();
+    if (deliveryAgreement) body.set('file', deliveryAgreement);
+    const response = await fetch(`/api/projects/${projectId}/completion`, { method: 'POST', body });
+    const payload = (await response.json().catch(() => null)) as { id?: string; error?: string } | null;
+    setPreparingCompletion(false);
+    if (!response.ok || !payload?.id) setError(payload?.error ?? 'Could not prepare the delivery sign-off.');
+    else window.location.assign(`/agreements/${payload.id}`);
+  };
+
   const updateRoadmap = (id: string, change: Partial<RoadmapItem>) => setRoadmap((list) => list.map((item) => (item.id === id ? { ...item, ...change } : item)));
 
   return (
@@ -219,6 +237,26 @@ export function ProjectDetailPage() {
           <div className="bk-row-actions"><button type="button" className="btn btn-secondary" onClick={() => setAdding(true)}><Plus size={15} aria-hidden="true" /> Add additional charge</button></div>
         )}
         <p className="bk-note">The agreed milestones start as advance requests and the last one becomes the final invoice, which adjusts what was already billed. An additional charge is billed as its own ordinary tax invoice. You can change the type in the invoice form.</p>
+      </section>
+
+      <section className="card section-card bk-tint-go">
+        <h3><FileCheck2 size={17} aria-hidden="true" /> Final delivery sign-off</h3>
+        {data.completion ? (
+          <>
+            <p className="bk-note bk-note-top">The final delivery record is {data.completion.status === 'signed' ? 'fully signed and locked.' : data.completion.status === 'client_signed' ? 'waiting for your countersignature.' : 'ready to send securely to the client for signature.'}</p>
+            <div className="bk-row-actions"><Link to={`/agreements/${data.completion.id}`} className="btn btn-primary"><FileCheck2 size={15} aria-hidden="true" /> Open delivery record</Link></div>
+          </>
+        ) : (
+          <>
+            <p className="bk-note bk-note-top">When every milestone is delivered or accepted, upload your own final delivery agreement with its complete terms and conditions—or use the standard delivery record. The prepared PDF is stored in R2, then you create a private signing link for the client.</p>
+            <div className="bk-drop">
+              <FileUpload allowedExtensions={['pdf']} maxBytes={25 * 1024 * 1024} onUploadComplete={setDeliveryAgreement} />
+              <p>{deliveryAgreement ? <><b>{deliveryAgreement.name}</b> · this will be the final delivery agreement sent for signature.</> : 'Upload your own final delivery agreement PDF, including all terms and conditions.'}</p>
+              {deliveryAgreement ? <Button variant="secondary" size="small" onClick={() => setDeliveryAgreement(null)}>Use standard record instead</Button> : null}
+            </div>
+            <div className="bk-row-actions"><Button leadingIcon={RiFileCheckLine} disabled={preparingCompletion} onClick={() => void prepareCompletion()}>{preparingCompletion ? 'Preparing…' : deliveryAgreement ? 'Upload and prepare delivery sign-off' : 'Prepare standard delivery sign-off'}</Button></div>
+          </>
+        )}
       </section>
 
       <section className="card section-card">
