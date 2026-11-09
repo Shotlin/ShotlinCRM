@@ -8,7 +8,6 @@ dist
 .env.*.local
 *.local
 .DS_Store
-drizzle/meta
 test-results
 playwright-report
 screenshots

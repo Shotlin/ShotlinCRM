@@ -1,0 +1,118 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1793125323000,
+      "tag": "0000_useful_ultragirl",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793125323001,
+      "tag": "0001_breezy_maggott",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793125323002,
+      "tag": "0002_sour_leopardon",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793125323003,
+      "tag": "0003_colorful_ares",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793125323004,
+      "tag": "0004_tiny_blue_shield",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793125323005,
+      "tag": "0005_backfill_conversation_timestamps",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793185431000,
+      "tag": "0006_chats_vs_pipeline",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793189774000,
+      "tag": "0007_gst_invoices",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793195645000,
+      "tag": "0008_storage_connections",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793202365000,
+      "tag": "0009_expenses",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793207093000,
+      "tag": "0010_deals_projects_share",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793209346000,
+      "tag": "0011_milestone_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793210084000,
+      "tag": "0012_invoice_revisions",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793211041000,
+      "tag": "0013_signatures",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1793213316000,
+      "tag": "0014_sign_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1793852548000,
+      "tag": "0015_project_completion",
+      "breakpoints": true
+    }
+  ]
+}
